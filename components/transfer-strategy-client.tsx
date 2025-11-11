@@ -59,10 +59,12 @@ export function TransferStrategyClient({
   managerInfo,
 }: TransferStrategyClientProps) {
   const [volatilityPreference, setVolatilityPreference] = useState(50); // 0 = stable, 100 = volatile
+  const [freeTransfersInput, setFreeTransfersInput] = useState(1); // User inputs their actual FTs
+  const [budgetFlexibility, setBudgetFlexibility] = useState(0); // -5 to +5 million
+  const [considerRolling, setConsiderRolling] = useState(true); // Whether to consider banking transfers
 
   // Get bank balance from manager info (last_deadline_bank is in tenths)
   const bankBalance = (managerInfo.last_deadline_bank || 0) / 10; // Convert to millions
-  const freeTransfers = managerInfo.last_deadline_total_transfers || 1;
 
   // Player detail modal
   const { selectPlayer } = usePlayerDetail();
@@ -313,8 +315,11 @@ export function TransferStrategyClient({
     let virtualSquad = [...squadPlayers];
     let virtualSquadIds = new Set(squadPlayers.map(p => p.id));
     
+    // Track free transfers available (starts with user input, can be rolled)
+    let currentFreeTransfers = freeTransfersInput;
+    
     // Get current bank balance from manager info (in tenths)
-    const currentBank = (managerInfo.last_deadline_bank || 0) / 10; // Convert to millions
+    let virtualBank = (managerInfo.last_deadline_bank || 0) / 10; // Convert to millions
 
     // Score all squad players for each upcoming gameweek
     for (let i = 0; i < nextGameweeks.length; i++) {
@@ -337,7 +342,7 @@ export function TransferStrategyClient({
       for (const squadScore of squadScores) {
         const playerPosition = squadScore.player.element_type;
         const sellingPrice = squadScore.player.now_cost / 10; // Convert to millions
-        const availableFunds = currentBank + sellingPrice; // Total budget after selling
+        const availableFunds = virtualBank + sellingPrice + budgetFlexibility; // Total budget after selling + flexibility
         
         // Score potential transfer targets (same position, not in squad, affordable)
         const positionTargets = allPlayers
@@ -373,22 +378,42 @@ export function TransferStrategyClient({
       const worstSquadPlayer = bestTransfer?.out;
       const bestTransferTarget = bestTransfer?.in;
 
-      // Only recommend transfer if improvement is significant
-      const improvementThreshold = 15;
+      // Determine if we should make a transfer based on improvement and rolling strategy
+      // Rolling threshold: if considerRolling is true and we have 1 FT, require higher improvement
+      const baseImprovementThreshold = 15;
+      const rollingThreshold = 25; // Higher threshold if considering rolling
+      const improvementThreshold = (considerRolling && currentFreeTransfers === 1) ? rollingThreshold : baseImprovementThreshold;
+      
       if (bestTransferTarget && worstSquadPlayer && bestTransfer) {
         const improvement = bestTransfer.improvement;
+        const priceDiff = (bestTransferTarget.player.now_cost - worstSquadPlayer.player.now_cost) / 10;
 
         if (improvement > improvementThreshold) {
           let priority: 'high' | 'medium' | 'low' = 'low';
           if (improvement > 30) priority = 'high';
           else if (improvement > 20) priority = 'medium';
 
-          const detailedExplanation = generateTransferExplanation(
+          let detailedExplanation = generateTransferExplanation(
             worstSquadPlayer,
             bestTransferTarget,
             gameweek,
             volatilityPreference
           );
+
+          // Add info about using FT
+          detailedExplanation += `\n\n**Free Transfers:** You currently have ${currentFreeTransfers} free transfer(s). `;
+          if (currentFreeTransfers === 1) {
+            detailedExplanation += `This transfer will use your free transfer for this gameweek. `;
+          } else if (currentFreeTransfers === 2) {
+            detailedExplanation += `This transfer uses 1 of your 2 free transfers. You can make another transfer without a points hit. `;
+          }
+          
+          // Add budget info
+          if (priceDiff > 0) {
+            detailedExplanation += `This transfer costs an additional £${priceDiff.toFixed(1)}m. `;
+          } else if (priceDiff < 0) {
+            detailedExplanation += `This transfer frees up £${Math.abs(priceDiff).toFixed(1)}m in your budget. `;
+          }
 
           // For the FIRST gameweek only, get 2 alternative options
           const alternatives: Array<{
@@ -440,16 +465,41 @@ export function TransferStrategyClient({
           virtualSquad = virtualSquad.filter(p => p.id !== worstSquadPlayer.player.id);
           virtualSquad.push(bestTransferTarget.player);
           virtualSquadIds = new Set(virtualSquad.map(p => p.id));
+          
+          // Update virtual bank
+          virtualBank += priceDiff;
+          
+          // Use 1 free transfer (reset to 1 for next week if this is the first gameweek)
+          if (currentFreeTransfers === 2) {
+            currentFreeTransfers = 1; // Used 1, still have 1 left
+          } else {
+            currentFreeTransfers = 1; // Used FT, get 1 next week
+          }
         } else {
-          const holdExplanation = `Your squad is well-positioned for Gameweek ${gameweek}. ` +
-            `The current analysis suggests that no transfer would provide a significant enough improvement (threshold: ${improvementThreshold} points) to justify using a transfer. ` +
-            `Your worst-performing player (${worstSquadPlayer.player.web_name}) still has a competitive score of ${worstSquadPlayer.score.toFixed(1)}, ` +
-            `and the best available transfer target (${bestTransferTarget.player.web_name}) would only improve this by ${improvement.toFixed(1)} points. ` +
-            `Consider banking this free transfer for future flexibility, especially if you're planning for a bigger move in subsequent weeks or want to have 2 free transfers available.`;
+          // Consider rolling the transfer
+          let holdExplanation = `**🏦 Rolling Transfer Recommended for Gameweek ${gameweek}**\n\n`;
+          
+          if (considerRolling && currentFreeTransfers === 1) {
+            holdExplanation += `Your squad is well-positioned and the best available transfer only offers a ${improvement.toFixed(1)} point improvement (below the threshold of ${improvementThreshold}). ` +
+              `**Banking your free transfer** to have 2 FTs next gameweek allows you to:\n\n` +
+              `• Make multiple position swaps without taking hits\n` +
+              `• React to injuries and price changes with more flexibility\n` +
+              `• Execute more complex transfer strategies\n\n` +
+              `The best transfer option would be ${worstSquadPlayer.player.web_name} (score: ${worstSquadPlayer.score.toFixed(1)}) ` +
+              `➡️ ${bestTransferTarget.player.web_name} (score: ${bestTransferTarget.score.toFixed(1)}), but waiting allows better opportunities.`;
+            
+            // Bank the transfer (increase FT count to 2 for next week, max 2)
+            currentFreeTransfers = Math.min(2, currentFreeTransfers + 1);
+          } else {
+            holdExplanation += `Your squad is well-positioned for Gameweek ${gameweek}. ` +
+              `The current analysis suggests that no transfer would provide a significant enough improvement (threshold: ${improvementThreshold} points) to justify using a transfer. ` +
+              `Your worst-performing player (${worstSquadPlayer.player.web_name}) still has a competitive score of ${worstSquadPlayer.score.toFixed(1)}, ` +
+              `and the best available transfer target (${bestTransferTarget.player.web_name}) would only improve this by ${improvement.toFixed(1)} points.`;
+          }
 
           strategy.push({
             gameweek,
-            reasoning: `Hold transfers - squad well positioned`,
+            reasoning: `Hold transfers - squad well positioned${considerRolling && currentFreeTransfers === 2 ? ' (2 FTs next week)' : ''}`,
             detailedExplanation: holdExplanation,
             priority: 'low',
           });
@@ -458,7 +508,7 @@ export function TransferStrategyClient({
     }
 
     return strategy;
-  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo]);
+  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling]);
 
   // Get difficulty badge color
   const getDifficultyColor = (difficulty: number) => {
@@ -479,10 +529,10 @@ export function TransferStrategyClient({
       {/* Budget Info */}
       <Card>
         <CardHeader>
-          <CardTitle>💰 Current Budget</CardTitle>
+          <CardTitle>💰 Current Budget & Transfers</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
             <div>
               <p className="text-sm text-muted-foreground">Bank Balance</p>
               <p className="text-2xl font-bold text-green-600">£{bankBalance.toFixed(1)}m</p>
@@ -492,12 +542,60 @@ export function TransferStrategyClient({
               <p className="text-2xl font-bold text-blue-600">£{(managerInfo.last_deadline_value / 10).toFixed(1)}m</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Available FTs</p>
-              <p className="text-2xl font-bold text-purple-600">{freeTransfers}</p>
+              <p className="text-sm text-muted-foreground">Free Transfers</p>
+              <input
+                type="number"
+                min="1"
+                max="2"
+                value={freeTransfersInput}
+                onChange={(e) => setFreeTransfersInput(Math.min(2, Math.max(1, parseInt(e.target.value) || 1)))}
+                className="text-2xl font-bold text-purple-600 w-20 px-2 py-1 border rounded bg-background text-center"
+              />
             </div>
           </div>
+
+          {/* Budget Flexibility Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Budget Flexibility</span>
+              <span className="text-lg font-bold text-primary">
+                {budgetFlexibility > 0 ? '+' : ''}{budgetFlexibility.toFixed(1)}m
+              </span>
+            </div>
+            <Slider
+              value={[budgetFlexibility * 10]}
+              onValueChange={(value) => setBudgetFlexibility(value[0] / 10)}
+              min={-50}
+              max={50}
+              step={1}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Save £5m</span>
+              <span>Neutral</span>
+              <span>Spend +£5m</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              💡 Adjust how much extra you're willing to spend (or save) on transfers
+            </p>
+          </div>
+
+          {/* Rolling Transfer Option */}
+          <div className="flex items-center space-x-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+            <input
+              type="checkbox"
+              id="considerRolling"
+              checked={considerRolling}
+              onChange={(e) => setConsiderRolling(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <label htmlFor="considerRolling" className="text-sm font-medium cursor-pointer">
+              Consider banking free transfer (rolling to get 2 FTs next week)
+            </label>
+          </div>
+
           <p className="text-xs text-muted-foreground mt-2">
-            💡 All transfer recommendations are within your budget (bank + selling price)
+            💡 Recommendations consider your available funds (bank + selling price {budgetFlexibility !== 0 ? `${budgetFlexibility > 0 ? '+' : ''}${budgetFlexibility.toFixed(1)}m flexibility` : ''})
           </p>
         </CardContent>
       </Card>
