@@ -26,7 +26,7 @@ interface OptimizationToolsProps {
 export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }: OptimizationToolsProps) {
     const [optimizedTeam, setOptimizedTeam] = useState<OptimizedTeam | null>(null);
     const [isOptimizing, setIsOptimizing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'freehit' | 'wildcard'>('freehit');
+    const [activeTab, setActiveTab] = useState<'freehit' | 'wildcard' | 'bestteam'>('bestteam');
     const [historicalData, setHistoricalData] = useState<HistoricalSeasonData[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [budgetValue, setBudgetValue] = useState(100); // Budget in millions (100 = £100.0m)
@@ -51,7 +51,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
 
         // Small delay to allow UI to update
         setTimeout(() => {
-            const gameweeks = activeTab === 'freehit' ? 1 : 5;
+            const gameweeks = activeTab === 'freehit' ? 1 : activeTab === 'wildcard' ? 5 : 3;
             const budget = budgetValue * 10; // Convert millions to 0.1m units (e.g., 100 -> 1000)
             const result = optimizeTeam(allPlayers, fixtures, {
                 budget,
@@ -175,17 +175,23 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
             </CardHeader>
             <CardContent>
                 <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="bestteam">
+                            <div className="flex items-center gap-2">
+                                <Wand2 className="h-4 w-4" />
+                                Best Team
+                            </div>
+                        </TabsTrigger>
                         <TabsTrigger value="freehit">
                             <div className="flex items-center gap-2">
                                 <CalendarDays className="h-4 w-4" />
-                                Free Hit (1 GW)
+                                Free Hit
                             </div>
                         </TabsTrigger>
                         <TabsTrigger value="wildcard">
                             <div className="flex items-center gap-2">
                                 <Wand2 className="h-4 w-4" />
-                                Perfect Wildcard (5 GWs)
+                                Wildcard
                             </div>
                         </TabsTrigger>
                     </TabsList>
@@ -193,12 +199,14 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                     <div className="space-y-6">
                         <div className="bg-muted/50 p-4 rounded-lg">
                             <h3 className="font-semibold mb-2">
-                                {activeTab === 'freehit' ? 'Free Hit Strategy' : 'Wildcard Strategy'}
+                                {activeTab === 'bestteam' ? 'Best Team for Budget' : activeTab === 'freehit' ? 'Free Hit Strategy' : 'Wildcard Strategy'}
                             </h3>
                             <p className="text-sm text-muted-foreground mb-4">
-                                {activeTab === 'freehit'
-                                    ? 'Optimizes for the absolute maximum points in the upcoming gameweek only. Ignores long-term value and upcoming fixtures beyond the next match.'
-                                    : 'Builds a balanced squad optimized for the next 5 gameweeks. Balances immediate points with long-term stability and fixture difficulty.'}
+                                {activeTab === 'bestteam'
+                                    ? 'Builds the absolute best team possible within your budget. Optimized for the next 3 gameweeks with balanced short and medium-term value.'
+                                    : activeTab === 'freehit'
+                                        ? 'Optimizes for the absolute maximum points in the upcoming gameweek only. Ignores long-term value and upcoming fixtures beyond the next match.'
+                                        : 'Builds a balanced squad optimized for the next 5 gameweeks. Balances immediate points with long-term stability and fixture difficulty.'}
                             </p>
 
                             <div className="space-y-3 mb-4">
@@ -244,7 +252,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                         {isLoadingHistory ? 'Loading Historical Data...' : 'Optimizing Team...'}
                                     </>
                                 ) : (
-                                    `Generate ${activeTab === 'freehit' ? 'Free Hit' : 'Wildcard'} Team`
+                                    `Generate ${activeTab === 'bestteam' ? 'Best' : activeTab === 'freehit' ? 'Free Hit' : 'Wildcard'} Team`
                                 )}
                             </Button>
                         </div>
