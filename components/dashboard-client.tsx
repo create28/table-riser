@@ -11,6 +11,7 @@ import { TransferCoefficient } from '@/components/transfer-coefficient';
 import { TransferSuggestions } from '@/components/transfer-suggestions';
 import { PlayerVsTeam } from '@/components/player-vs-team';
 import { PlayerVolatility } from '@/components/player-volatility';
+import { OptimizationTools } from '@/components/optimization-tools';
 
 interface DashboardClientProps {
   players: Player[];
@@ -47,14 +48,14 @@ export function DashboardClient({
     <>
       {/* Dashboard Grid */}
       <div className="grid gap-6 md:grid-cols-2">
-        <PlayerForm 
+        <PlayerForm
           players={players}
           allPlayers={allPlayers}
           teams={teams}
           squadPlayerIds={squadPlayerIds}
           onPlayerClick={handlePlayerClick}
         />
-        <ValueEfficiency 
+        <ValueEfficiency
           players={players}
           allPlayers={allPlayers}
           teams={teams}
@@ -67,7 +68,7 @@ export function DashboardClient({
 
       {/* Full Width Sections */}
       <TransferCoefficient players={players} onPlayerClick={handlePlayerClick} />
-      
+
       <TransferSuggestions
         currentPlayers={players}
         allPlayers={allPlayers}
@@ -90,6 +91,13 @@ export function DashboardClient({
         playerHistories={playerHistories}
         squadPlayerIds={squadPlayerIds}
         onPlayerClick={handlePlayerClick}
+      />
+
+      <OptimizationTools
+        allPlayers={allPlayers}
+        fixtures={fixtures}
+        teams={teams}
+        currentBudget={1000}
       />
 
       {/* Player Detail Modal */}
