@@ -12,8 +12,9 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Wand2, CalendarDays } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 interface OptimizationToolsProps {
     allPlayers: Player[];
@@ -28,7 +29,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
     const [activeTab, setActiveTab] = useState<'freehit' | 'wildcard'>('freehit');
     const [historicalData, setHistoricalData] = useState<HistoricalSeasonData[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [limitBudget, setLimitBudget] = useState(true); // Default to true (100m limit)
+    const [budgetValue, setBudgetValue] = useState(100); // Budget in millions (100 = £100.0m)
 
     const handleOptimize = async () => {
         setIsOptimizing(true);
@@ -51,7 +52,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
         // Small delay to allow UI to update
         setTimeout(() => {
             const gameweeks = activeTab === 'freehit' ? 1 : 5;
-            const budget = limitBudget ? 1000 : 10000; // 100m or unlimited (1000m)
+            const budget = budgetValue * 10; // Convert millions to 0.1m units (e.g., 100 -> 1000)
             const result = optimizeTeam(allPlayers, fixtures, {
                 budget,
                 gameweeks,
@@ -200,18 +201,35 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                     : 'Builds a balanced squad optimized for the next 5 gameweeks. Balances immediate points with long-term stability and fixture difficulty.'}
                             </p>
 
-                            <div className="flex items-center space-x-2 mb-4">
-                                <Checkbox
-                                    id="budget-limit"
-                                    checked={limitBudget}
-                                    onCheckedChange={(checked) => setLimitBudget(checked as boolean)}
+                            <div className="space-y-3 mb-4">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="budget-slider" className="text-sm font-medium">
+                                        Budget: £{budgetValue.toFixed(1)}m
+                                    </Label>
+                                    <Input
+                                        id="budget-input"
+                                        type="number"
+                                        min="50"
+                                        max="150"
+                                        step="0.5"
+                                        value={budgetValue}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBudgetValue(parseFloat(e.target.value) || 100)}
+                                        className="w-24 h-8 text-sm"
+                                    />
+                                </div>
+                                <Slider
+                                    id="budget-slider"
+                                    min={50}
+                                    max={150}
+                                    step={0.5}
+                                    value={[budgetValue]}
+                                    onValueChange={(values) => setBudgetValue(values[0])}
+                                    className="w-full"
                                 />
-                                <Label
-                                    htmlFor="budget-limit"
-                                    className="text-sm font-normal cursor-pointer"
-                                >
-                                    Limit budget to £100.0m
-                                </Label>
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>£50.0m</span>
+                                    <span>£150.0m</span>
+                                </div>
                             </div>
 
                             <Button
