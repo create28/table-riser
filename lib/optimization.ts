@@ -277,23 +277,28 @@ export function optimizeTeam(
                 for (const expensive of expensivePlayers) {
                     // Try to find a cheaper replacement for this player
                     const expensivePos = expensive.element_type as keyof typeof currentCounts;
+
+                    // Calculate team counts after removing expensive player
+                    const tempTeamCounts = { ...teamCounts };
+                    tempTeamCounts[expensive.team]--;
+
                     const cheaperAlternatives = playersByPosition[expensivePos]
                         .filter(p =>
                             !selectedPlayers.find(sp => sp.id === p.id) &&
                             !settings.excludePlayers.includes(p.id) &&
                             p.now_cost < expensive.now_cost &&
-                            (teamCounts[p.team] || 0) < 3
+                            (tempTeamCounts[p.team] || 0) < 3 // Check against temp counts
                         )
                         .sort((a, b) => b.xP - a.xP); // Best cheaper alternative
 
                     if (cheaperAlternatives.length > 0) {
                         const replacement = cheaperAlternatives[0];
-                        const savedBudget = expensive.now_cost - replacement.now_cost;
 
                         // Check if swapping would allow us to add the player we want
                         const targetPlayer = availablePlayers.find(p =>
                             !selectedPlayers.find(sp => sp.id === p.id) &&
-                            currentCost - expensive.now_cost + replacement.now_cost + p.now_cost <= settings.budget * 10
+                            currentCost - expensive.now_cost + replacement.now_cost + p.now_cost <= settings.budget * 10 &&
+                            (tempTeamCounts[p.team] || 0) < 3 // Check target player team count too
                         );
 
                         if (targetPlayer) {
@@ -321,6 +326,54 @@ export function optimizeTeam(
 
             if (!added) break; // Can't add more players for this position
         }
+    }
+
+    // Final budget validation - if over budget, replace most expensive bench players with cheapest options
+    while (currentCost > settings.budget * 10 && selectedPlayers.length === 15) {
+        // Find bench-worthy players (lowest xP) that are expensive
+        const sortedByXP = [...selectedPlayers].sort((a, b) => a.xP - b.xP);
+        const benchPlayers = sortedByXP.slice(0, 4); // Likely bench players
+
+        let swapped = false;
+        for (const expensive of benchPlayers.sort((a, b) => b.now_cost - a.now_cost)) {
+            const pos = expensive.element_type as keyof typeof currentCounts;
+
+            // Calculate team counts after removing expensive player
+            const tempTeamCounts = { ...teamCounts };
+            tempTeamCounts[expensive.team]--;
+
+            // Find cheapest replacement for this position
+            const cheaperOptions = playersByPosition[pos]
+                .filter(p =>
+                    !selectedPlayers.find(sp => sp.id === p.id) &&
+                    !settings.excludePlayers.includes(p.id) &&
+                    p.now_cost < expensive.now_cost &&
+                    (tempTeamCounts[p.team] || 0) < 3
+                )
+                .sort((a, b) => a.now_cost - b.now_cost); // Cheapest first
+
+            if (cheaperOptions.length > 0) {
+                const replacement = cheaperOptions[0];
+                const savings = expensive.now_cost - replacement.now_cost;
+
+                if (currentCost - savings <= settings.budget * 10) {
+                    // Perform swap
+                    const idx = selectedPlayers.indexOf(expensive);
+                    selectedPlayers.splice(idx, 1);
+                    teamCounts[expensive.team]--;
+                    currentCost -= expensive.now_cost;
+
+                    selectedPlayers.push(replacement);
+                    teamCounts[replacement.team] = (teamCounts[replacement.team] || 0) + 1;
+                    currentCost += replacement.now_cost;
+
+                    swapped = true;
+                    break;
+                }
+            }
+        }
+
+        if (!swapped) break; // Can't reduce budget further
     }
 
     // If we couldn't fill the team (e.g. budget too low), we might need a fallback or retry with cheaper players
