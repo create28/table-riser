@@ -454,3 +454,34 @@ export function optimizeTeam(
         totalCost: currentCost
     };
 }
+
+/**
+ * Create the best team with a total cost of 100.0m
+ * This is a convenience function that wraps optimizeTeam with standard settings
+ * 
+ * @param allPlayers - Array of all available players
+ * @param fixtures - Array of upcoming fixtures
+ * @param gameweeks - Number of gameweeks to optimize for (default: 1 for Free Hit)
+ * @param historicalData - Optional historical season data for better predictions
+ * @param excludePlayers - Optional array of player IDs to exclude
+ * @param includePlayers - Optional array of player IDs to force include
+ * @returns OptimizedTeam with 100.0m budget
+ */
+export function createBestTeam(
+    allPlayers: Player[],
+    fixtures: Fixture[],
+    gameweeks: number = 1,
+    historicalData: HistoricalSeasonData[] = [],
+    excludePlayers: number[] = [],
+    includePlayers: number[] = []
+): OptimizedTeam {
+    const settings: OptimizationSettings = {
+        budget: 100.0,
+        gameweeks,
+        excludePlayers,
+        includePlayers,
+        historicalData
+    };
+
+    return optimizeTeam(allPlayers, fixtures, settings);
+}
