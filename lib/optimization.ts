@@ -228,19 +228,99 @@ export function optimizeTeam(
     });
 
     // Fill remaining slots with best available players
-    for (const player of playersWithXP) {
-        if (selectedPlayers.find(p => p.id === player.id)) continue; // Already selected
-        if (settings.excludePlayers.includes(player.id)) continue; // Excluded
+    // Sort players by position for easier selection
+    const playersByPosition: { [key: number]: PlayerWithXP[] } = {
+        1: playersWithXP.filter(p => p.element_type === 1).sort((a, b) => b.xP - a.xP),
+        2: playersWithXP.filter(p => p.element_type === 2).sort((a, b) => b.xP - a.xP),
+        3: playersWithXP.filter(p => p.element_type === 3).sort((a, b) => b.xP - a.xP),
+        4: playersWithXP.filter(p => p.element_type === 4).sort((a, b) => b.xP - a.xP),
+    };
 
-        const type = player.element_type as keyof typeof currentCounts;
-        if (currentCounts[type] < requirements[type] && canAddPlayer(player)) {
-            selectedPlayers.push(player);
-            teamCounts[player.team] = (teamCounts[player.team] || 0) + 1;
-            currentCost += player.now_cost;
-            currentCounts[type]++;
+    // Try to fill each position
+    for (const [posStr, required] of Object.entries(requirements)) {
+        const position = parseInt(posStr) as keyof typeof currentCounts;
+        const needed = required - currentCounts[position];
+
+        if (needed <= 0) continue;
+
+        const availablePlayers = playersByPosition[position].filter(p =>
+            !selectedPlayers.find(sp => sp.id === p.id) &&
+            !settings.excludePlayers.includes(p.id) &&
+            (teamCounts[p.team] || 0) < 3
+        );
+
+        // Try to add players for this position
+        for (let i = 0; i < needed && availablePlayers.length > 0; i++) {
+            let added = false;
+
+            // Try players in order of xP, but check budget
+            for (const player of availablePlayers) {
+                if (selectedPlayers.find(sp => sp.id === player.id)) continue;
+
+                if (canAddPlayer(player)) {
+                    selectedPlayers.push(player);
+                    teamCounts[player.team] = (teamCounts[player.team] || 0) + 1;
+                    currentCost += player.now_cost;
+                    currentCounts[position]++;
+                    added = true;
+                    break;
+                }
+            }
+
+            // If we couldn't add anyone due to budget, we need to make room
+            if (!added && availablePlayers.length > 0) {
+                // Find the most expensive player we can swap out
+                const expensivePlayers = selectedPlayers
+                    .filter(p => p.element_type !== position) // Don't swap same position
+                    .sort((a, b) => b.now_cost - a.now_cost);
+
+                for (const expensive of expensivePlayers) {
+                    // Try to find a cheaper replacement for this player
+                    const expensivePos = expensive.element_type as keyof typeof currentCounts;
+                    const cheaperAlternatives = playersByPosition[expensivePos]
+                        .filter(p =>
+                            !selectedPlayers.find(sp => sp.id === p.id) &&
+                            !settings.excludePlayers.includes(p.id) &&
+                            p.now_cost < expensive.now_cost &&
+                            (teamCounts[p.team] || 0) < 3
+                        )
+                        .sort((a, b) => b.xP - a.xP); // Best cheaper alternative
+
+                    if (cheaperAlternatives.length > 0) {
+                        const replacement = cheaperAlternatives[0];
+                        const savedBudget = expensive.now_cost - replacement.now_cost;
+
+                        // Check if swapping would allow us to add the player we want
+                        const targetPlayer = availablePlayers.find(p =>
+                            !selectedPlayers.find(sp => sp.id === p.id) &&
+                            currentCost - expensive.now_cost + replacement.now_cost + p.now_cost <= settings.budget * 10
+                        );
+
+                        if (targetPlayer) {
+                            // Perform the swap
+                            const idx = selectedPlayers.indexOf(expensive);
+                            selectedPlayers.splice(idx, 1);
+                            teamCounts[expensive.team]--;
+                            currentCost -= expensive.now_cost;
+
+                            selectedPlayers.push(replacement);
+                            teamCounts[replacement.team] = (teamCounts[replacement.team] || 0) + 1;
+                            currentCost += replacement.now_cost;
+
+                            // Now add the target player
+                            selectedPlayers.push(targetPlayer);
+                            teamCounts[targetPlayer.team] = (teamCounts[targetPlayer.team] || 0) + 1;
+                            currentCost += targetPlayer.now_cost;
+                            currentCounts[position]++;
+                            added = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!added) break; // Can't add more players for this position
         }
-
-        if (selectedPlayers.length === 15) break;
     }
 
     // If we couldn't fill the team (e.g. budget too low), we might need a fallback or retry with cheaper players
