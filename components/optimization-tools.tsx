@@ -10,6 +10,8 @@ import { optimizeTeam, OptimizedTeam, PlayerWithXP } from '@/lib/optimization';
 import { loadHistoricalData, HistoricalSeasonData } from '@/lib/historical-data';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Wand2, CalendarDays } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Progress } from '@/components/ui/progress';
 
 interface OptimizationToolsProps {
     allPlayers: Player[];
@@ -63,27 +65,97 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
         return teams.find(t => t.id === teamId)?.short_name || 'UNK';
     };
 
-    const renderPlayerRow = (player: PlayerWithXP, isCaptain: boolean = false, isVice: boolean = false) => (
-        <div key={player.id} className="flex items-center justify-between py-2 border-b last:border-0">
-            <div className="flex items-center gap-3">
-                <div className="w-8 text-xs font-bold text-muted-foreground">
-                    {player.element_type === 1 ? 'GKP' : player.element_type === 2 ? 'DEF' : player.element_type === 3 ? 'MID' : 'FWD'}
-                </div>
-                <div>
-                    <div className="font-medium flex items-center gap-2">
-                        {player.web_name}
-                        {isCaptain && <Badge variant="default" className="h-5 px-1.5 text-[10px]">C</Badge>}
-                        {isVice && <Badge variant="outline" className="h-5 px-1.5 text-[10px]">V</Badge>}
+    const renderPlayerRow = (player: PlayerWithXP, isCaptain: boolean = false, isVice: boolean = false) => {
+        const breakdown = player.xpBreakdown;
+
+        // Determine confidence color
+        let confidenceColor = "bg-red-500";
+        let confidenceLabel = "Low";
+        if (breakdown?.confidenceScore && breakdown.confidenceScore >= 70) {
+            confidenceColor = "bg-green-500";
+            confidenceLabel = "High";
+        } else if (breakdown?.confidenceScore && breakdown.confidenceScore >= 50) {
+            confidenceColor = "bg-yellow-500";
+            confidenceLabel = "Medium";
+        }
+
+        return (
+            <div key={player.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 text-xs font-bold text-muted-foreground">
+                        {player.element_type === 1 ? 'GKP' : player.element_type === 2 ? 'DEF' : player.element_type === 3 ? 'MID' : 'FWD'}
                     </div>
-                    <div className="text-xs text-muted-foreground">{getTeamName(player.team)}</div>
+                    <div>
+                        <div className="font-medium flex items-center gap-2">
+                            {player.web_name}
+                            {isCaptain && <Badge variant="default" className="h-5 px-1.5 text-[10px]">C</Badge>}
+                            {isVice && <Badge variant="outline" className="h-5 px-1.5 text-[10px]">V</Badge>}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{getTeamName(player.team)}</div>
+                    </div>
+                </div>
+                <div className="text-right">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="cursor-help">
+                                    <div className="font-bold">{player.xP?.toFixed(1)} xP</div>
+                                    <div className="text-xs text-muted-foreground">£{(player.now_cost / 10).toFixed(1)}m</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="w-64 p-3">
+                                <div className="space-y-2 text-xs">
+                                    <div className="font-semibold border-b pb-1 mb-2">xP Breakdown</div>
+
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Base Points:</span>
+                                        <span>{breakdown?.basePoints.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Recent Form:</span>
+                                        <span>{breakdown?.recentForm.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Season PPG:</span>
+                                        <span>{breakdown?.seasonPPG.toFixed(2)}</span>
+                                    </div>
+                                    {breakdown?.historicalPPG ? (
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Hist. PPG:</span>
+                                            <span>{breakdown.historicalPPG.toFixed(2)}</span>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="border-t my-1 pt-1"></div>
+
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Diff. Mult:</span>
+                                        <span>x{breakdown?.difficultyMultiplier.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Home Mult:</span>
+                                        <span>x{breakdown?.homeMultiplier.toFixed(2)}</span>
+                                    </div>
+
+                                    <div className="border-t my-1 pt-1"></div>
+
+                                    <div>
+                                        <div className="flex justify-between mb-1">
+                                            <span className="text-muted-foreground">Confidence:</span>
+                                            <span className={confidenceLabel === 'High' ? 'text-green-500' : confidenceLabel === 'Medium' ? 'text-yellow-500' : 'text-red-500'}>
+                                                {confidenceLabel} ({breakdown?.confidenceScore}%)
+                                            </span>
+                                        </div>
+                                        <Progress value={breakdown?.confidenceScore || 0} className="h-1.5" indicatorClassName={confidenceColor} />
+                                    </div>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
             </div>
-            <div className="text-right">
-                <div className="font-bold">{player.xP?.toFixed(1)} xP</div>
-                <div className="text-xs text-muted-foreground">£{(player.now_cost / 10).toFixed(1)}m</div>
-            </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <Card className="w-full">

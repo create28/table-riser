@@ -9,8 +9,19 @@ export interface OptimizationSettings {
     historicalData: HistoricalSeasonData[];
 }
 
+export interface XPBreakdown {
+    basePoints: number;
+    recentForm: number;
+    seasonPPG: number;
+    historicalPPG: number;
+    difficultyMultiplier: number;
+    homeMultiplier: number;
+    confidenceScore: number; // 0-100
+}
+
 export interface PlayerWithXP extends Player {
     xP: number;
+    xpBreakdown?: XPBreakdown;
 }
 
 export interface OptimizedTeam {
@@ -28,7 +39,7 @@ export function calculateExpectedPoints(
     fixtures: Fixture[],
     gameweeks: number,
     historicalData: HistoricalSeasonData[] = []
-): number {
+): { totalXP: number, breakdown: XPBreakdown } {
     let totalXP = 0;
     const playerTeam = player.team;
 
@@ -63,6 +74,7 @@ export function calculateExpectedPoints(
     // Weighted Base Points
     // If we have historical data, use it to stabilize the prediction
     let basePoints = 0;
+    let confidenceScore = 0;
 
     if (historicalMatchesCount > 10) {
         // Player has history: Balance recent form, season form, and history
@@ -72,26 +84,50 @@ export function calculateExpectedPoints(
         // Consistency Bonus: If historical PPG is high (> 4.5), boost slightly
         if (historicalPPG > 4.5) basePoints += 0.5;
 
+        confidenceScore = 90; // High confidence with history
     } else {
         // New player or lack of history: Rely on season form and recent form
         // 60% Recent, 40% Season (Form is more volatile but important for new players)
         basePoints = (recentForm * 0.6) + (seasonPPG * 0.4);
+
+        if (player.minutes > 500) {
+            confidenceScore = 70; // Moderate confidence if played enough this season
+        } else {
+            confidenceScore = 40; // Low confidence for new/bench players
+        }
     }
 
     // If player has no minutes, return 0 (unless high chance of playing)
-    if (player.minutes === 0 && player.chance_of_playing_next_round !== 100) return 0;
+    if (player.minutes === 0 && player.chance_of_playing_next_round !== 100) {
+        return {
+            totalXP: 0,
+            breakdown: {
+                basePoints, recentForm, seasonPPG, historicalPPG,
+                difficultyMultiplier: 0, homeMultiplier: 0, confidenceScore
+            }
+        };
+    }
 
     // Check injury status
     if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined && player.chance_of_playing_next_round < 75) {
-        return 0;
+        return {
+            totalXP: 0,
+            breakdown: {
+                basePoints, recentForm, seasonPPG, historicalPPG,
+                difficultyMultiplier: 0, homeMultiplier: 0, confidenceScore: 100 // Confident they won't play
+            }
+        };
     }
+
+    let avgDifficultyMultiplier = 0;
+    let avgHomeMultiplier = 0;
 
     for (const fixture of upcomingFixtures) {
         const isHome = fixture.team_h === playerTeam;
         const difficulty = isHome ? fixture.team_h_difficulty : fixture.team_a_difficulty;
 
         // Difficulty multiplier (easier = higher multiplier)
-        // Difficulty 1-5. 
+        // Difficulty 1-5.
         // 1 -> 1.25x (Was 1.3)
         // 2 -> 1.15x (Was 1.2)
         // 3 -> 1.0x
@@ -116,9 +152,28 @@ export function calculateExpectedPoints(
         // The multipliers scale this average based on fixture difficulty.
 
         totalXP += matchXP;
+
+        avgDifficultyMultiplier += difficultyMultiplier;
+        avgHomeMultiplier += homeMultiplier;
     }
 
-    return totalXP;
+    if (upcomingFixtures.length > 0) {
+        avgDifficultyMultiplier /= upcomingFixtures.length;
+        avgHomeMultiplier /= upcomingFixtures.length;
+    }
+
+    return {
+        totalXP,
+        breakdown: {
+            basePoints,
+            recentForm,
+            seasonPPG,
+            historicalPPG,
+            difficultyMultiplier: avgDifficultyMultiplier,
+            homeMultiplier: avgHomeMultiplier,
+            confidenceScore
+        }
+    };
 }
 
 // Greedy optimization algorithm
@@ -128,10 +183,14 @@ export function optimizeTeam(
     settings: OptimizationSettings
 ): OptimizedTeam {
     // 1. Calculate xP for all players
-    const playersWithXP: PlayerWithXP[] = allPlayers.map(p => ({
-        ...p,
-        xP: calculateExpectedPoints(p, fixtures, settings.gameweeks, settings.historicalData)
-    })).filter(p => p.xP > 0); // Remove players with 0 xP
+    const playersWithXP: PlayerWithXP[] = allPlayers.map(p => {
+        const { totalXP, breakdown } = calculateExpectedPoints(p, fixtures, settings.gameweeks, settings.historicalData);
+        return {
+            ...p,
+            xP: totalXP,
+            xpBreakdown: breakdown
+        };
+    }).filter(p => p.xP > 0); // Remove players with 0 xP
 
     // 2. Sort by xP descending
     playersWithXP.sort((a, b) => b.xP - a.xP);
