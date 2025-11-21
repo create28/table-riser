@@ -178,3 +178,4 @@ Shows players being sold by managers:
 - ✅ **Good**: 20-30 points per million
 - ⚠️ **Poor**: <20 points per million
 
+

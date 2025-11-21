@@ -39,6 +39,15 @@ export interface OptimizedTeam {
     totalCost: number;
 }
 
+export interface LineupOptimization {
+    starters: PlayerWithXP[];
+    bench: PlayerWithXP[];
+    captain: PlayerWithXP;
+    viceCaptain: PlayerWithXP;
+    formation: string; // e.g., "3-4-3"
+    totalExpectedPoints: number;
+}
+
 // Calculate expected points for a player over a number of gameweeks
 export function calculateExpectedPoints(
     player: Player,
@@ -544,4 +553,125 @@ export function createBestTeam(
     };
 
     return optimizeTeam(allPlayers, fixtures, settings);
+}
+
+/**
+ * Optimize lineup for a given 15-player squad
+ * Determines best starting XI, bench order, and captaincy for next gameweek
+ * 
+ * @param squadPlayers - Array of exactly 15 players in the squad
+ * @param fixtures - Array of upcoming fixtures
+ * @param historicalData - Optional historical season data
+ * @param strategy - Optional strategy settings
+ * @returns LineupOptimization with optimal starting XI and bench
+ */
+export function optimizeLineup(
+    squadPlayers: Player[],
+    fixtures: Fixture[],
+    historicalData: HistoricalSeasonData[] = [],
+    strategy?: OptimizationStrategy
+): LineupOptimization {
+    if (squadPlayers.length !== 15) {
+        throw new Error(`Squad must have exactly 15 players, got ${squadPlayers.length}`);
+    }
+
+    // Calculate xP for all squad players (1 gameweek only)
+    const playersWithXP: PlayerWithXP[] = squadPlayers.map(p => {
+        const { totalXP, breakdown } = calculateExpectedPoints(
+            p,
+            fixtures,
+            1, // Next gameweek only
+            historicalData,
+            strategy
+        );
+        return {
+            ...p,
+            xP: totalXP,
+            xpBreakdown: breakdown
+        };
+    });
+
+    // Separate goalkeepers and outfield players
+    const gks = playersWithXP.filter(p => p.element_type === 1).sort((a, b) => b.xP - a.xP);
+    const outfield = playersWithXP.filter(p => p.element_type !== 1);
+
+    if (gks.length !== 2) {
+        throw new Error(`Squad must have exactly 2 goalkeepers, got ${gks.length}`);
+    }
+
+    // Valid formations: [DEF, MID, FWD]
+    const validFormations = [
+        [3, 4, 3],
+        [3, 5, 2],
+        [4, 3, 3],
+        [4, 4, 2],
+        [4, 5, 1],
+        [5, 3, 2],
+        [5, 4, 1],
+    ];
+
+    let bestFormation: { def: number; mid: number; fwd: number } | null = null;
+    let bestStarters: PlayerWithXP[] = [];
+    let bestTotalXP = -1;
+
+    // Try each formation
+    for (const [defCount, midCount, fwdCount] of validFormations) {
+        const defenders = outfield.filter(p => p.element_type === 2).sort((a, b) => b.xP - a.xP);
+        const midfielders = outfield.filter(p => p.element_type === 3).sort((a, b) => b.xP - a.xP);
+        const forwards = outfield.filter(p => p.element_type === 4).sort((a, b) => b.xP - a.xP);
+
+        // Check if we have enough players for this formation
+        if (defenders.length < defCount || midfielders.length < midCount || forwards.length < fwdCount) {
+            continue;
+        }
+
+        // Select top players for this formation
+        const selectedDef = defenders.slice(0, defCount);
+        const selectedMid = midfielders.slice(0, midCount);
+        const selectedFwd = forwards.slice(0, fwdCount);
+
+        const formationStarters = [...selectedDef, ...selectedMid, ...selectedFwd];
+        const totalXP = formationStarters.reduce((sum, p) => sum + p.xP, 0);
+
+        if (totalXP > bestTotalXP) {
+            bestTotalXP = totalXP;
+            bestStarters = formationStarters;
+            bestFormation = { def: defCount, mid: midCount, fwd: fwdCount };
+        }
+    }
+
+    if (!bestFormation || bestStarters.length === 0) {
+        throw new Error('Could not find valid formation for squad');
+    }
+
+    // Starting GK is the one with higher xP
+    const startingGK = gks[0];
+    const benchGK = gks[1];
+
+    // Complete starters list
+    const starters = [startingGK, ...bestStarters];
+
+    // Bench: GK first, then remaining outfield players sorted by xP (descending for auto-sub priority)
+    const benchOutfield = outfield
+        .filter(p => !bestStarters.find(s => s.id === p.id))
+        .sort((a, b) => b.xP - a.xP);
+
+    const bench = [benchGK, ...benchOutfield];
+
+    // Captain and vice-captain: highest and second-highest xP among starters
+    const sortedStarters = [...starters].sort((a, b) => b.xP - a.xP);
+    const captain = sortedStarters[0];
+    const viceCaptain = sortedStarters[1];
+
+    const formationString = `${bestFormation.def}-${bestFormation.mid}-${bestFormation.fwd}`;
+    const totalExpectedPoints = starters.reduce((sum, p) => sum + p.xP, 0) + captain.xP; // Captain gets double
+
+    return {
+        starters,
+        bench,
+        captain,
+        viceCaptain,
+        formation: formationString,
+        totalExpectedPoints
+    };
 }

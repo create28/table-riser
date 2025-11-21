@@ -28,3 +28,5 @@ export function StrategyPlayerModal({ teams, playerHistories }: StrategyPlayerMo
   );
 }
 
+
+
