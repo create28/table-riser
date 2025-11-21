@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
-import { optimizeTeam, OptimizedTeam, PlayerWithXP } from '@/lib/optimization';
+import { optimizeTeam, OptimizedTeam, PlayerWithXP, OptimizationStrategy } from '@/lib/optimization';
 import { loadHistoricalData, HistoricalSeasonData } from '@/lib/historical-data';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Wand2, CalendarDays } from 'lucide-react';
@@ -31,6 +31,8 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [budgetValue, setBudgetValue] = useState(100); // Budget in millions (100 = £100.0m)
     const [lastOptimizedBudget, setLastOptimizedBudget] = useState<number | null>(null);
+    const [timeHorizon, setTimeHorizon] = useState(0); // -1 (short-term) to 1 (long-term)
+    const [riskTolerance, setRiskTolerance] = useState(0); // -1 (conservative) to 1 (aggressive)
 
     const budgetChanged = lastOptimizedBudget !== null && lastOptimizedBudget !== budgetValue;
 
@@ -59,14 +61,20 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
             // The optimizeTeam function expects budget in millions and converts internally
             const budget = budgetValue;
 
-            console.log(`Optimizing with budget: £${budgetValue}m`);
+            console.log(`Optimizing with budget: £${budgetValue}m, timeHorizon: ${timeHorizon}, risk: ${riskTolerance}`);
+
+            const strategy: OptimizationStrategy = {
+                timeHorizon,
+                riskTolerance
+            };
 
             const result = optimizeTeam(allPlayers, fixtures, {
                 budget,
                 gameweeks,
                 excludePlayers: [],
                 includePlayers: [],
-                historicalData: currentHistory
+                historicalData: currentHistory,
+                strategy
             });
 
             console.log(`Result total cost: £${(result.totalCost / 10).toFixed(1)}m`);
@@ -220,34 +228,91 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                         : 'Builds a balanced squad optimized for the next 5 gameweeks. Balances immediate points with long-term stability and fixture difficulty.'}
                             </p>
 
-                            <div className="space-y-3 mb-4">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="budget-slider" className="text-sm font-medium">
-                                        Budget: £{budgetValue.toFixed(1)}m
-                                    </Label>
-                                    <Input
-                                        id="budget-input"
-                                        type="number"
-                                        min="50"
-                                        max="150"
-                                        step="0.5"
-                                        value={budgetValue}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBudgetValue(parseFloat(e.target.value) || 100)}
-                                        className="w-24 h-8 text-sm"
+                            <div className="space-y-4 mb-4">
+                                {/* Budget Slider */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="budget-slider" className="text-sm font-medium">
+                                            Budget: £{budgetValue.toFixed(1)}m
+                                        </Label>
+                                        <Input
+                                            id="budget-input"
+                                            type="number"
+                                            min="50"
+                                            max="150"
+                                            step="0.5"
+                                            value={budgetValue}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBudgetValue(parseFloat(e.target.value) || 100)}
+                                            className="w-24 h-8 text-sm"
+                                        />
+                                    </div>
+                                    <Slider
+                                        id="budget-slider"
+                                        min={50}
+                                        max={150}
+                                        step={0.5}
+                                        value={[budgetValue]}
+                                        onValueChange={(values) => setBudgetValue(values[0])}
+                                        className="w-full"
                                     />
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>£50.0m</span>
+                                        <span>£150.0m</span>
+                                    </div>
                                 </div>
-                                <Slider
-                                    id="budget-slider"
-                                    min={50}
-                                    max={150}
-                                    step={0.5}
-                                    value={[budgetValue]}
-                                    onValueChange={(values) => setBudgetValue(values[0])}
-                                    className="w-full"
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <span>£50.0m</span>
-                                    <span>£150.0m</span>
+
+                                {/* Time Horizon Slider */}
+                                <div className="space-y-2 pt-2 border-t">
+                                    <Label htmlFor="time-horizon-slider" className="text-sm font-medium">
+                                        Strategy Focus: {timeHorizon < -0.3 ? '🔥 Short-term Form' : timeHorizon > 0.3 ? '📊 Long-term History' : '⚖️ Balanced'}
+                                    </Label>
+                                    <Slider
+                                        id="time-horizon-slider"
+                                        min={-1}
+                                        max={1}
+                                        step={0.1}
+                                        value={[timeHorizon]}
+                                        onValueChange={(values) => setTimeHorizon(values[0])}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>🔥 Form</span>
+                                        <span>📊 History</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {timeHorizon < -0.3
+                                            ? 'Prioritizes recent form and hot streaks'
+                                            : timeHorizon > 0.3
+                                                ? 'Prioritizes proven performers with historical data'
+                                                : 'Balances recent form with long-term consistency'}
+                                    </p>
+                                </div>
+
+                                {/* Risk Tolerance Slider */}
+                                <div className="space-y-2 pt-2 border-t">
+                                    <Label htmlFor="risk-slider" className="text-sm font-medium">
+                                        Risk Level: {riskTolerance < -0.3 ? '🛡️ Conservative' : riskTolerance > 0.3 ? '⚡ Aggressive' : '⚖️ Balanced'}
+                                    </Label>
+                                    <Slider
+                                        id="risk-slider"
+                                        min={-1}
+                                        max={1}
+                                        step={0.1}
+                                        value={[riskTolerance]}
+                                        onValueChange={(values) => setRiskTolerance(values[0])}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>🛡️ Safe</span>
+                                        <span>⚡ Risky</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {riskTolerance < -0.3
+                                            ? 'Prefers nailed-on starters with high confidence'
+                                            : riskTolerance > 0.3
+                                                ? 'Accepts rotation risks for higher upside differentials'
+                                                : 'Balances safety with potential upside'}
+                                    </p>
                                 </div>
                             </div>
 

@@ -1,12 +1,18 @@
 import { Player, Team, Fixture } from './fpl-api';
 import { HistoricalSeasonData, findHistoricalMatches } from './historical-data';
 
+export interface OptimizationStrategy {
+    timeHorizon: number; // -1 (short-term/form) to 1 (long-term/history)
+    riskTolerance: number; // -1 (conservative/safe) to 1 (aggressive/risky)
+}
+
 export interface OptimizationSettings {
     budget: number;
     gameweeks: number; // 1 for Free Hit, >1 for Wildcard
     excludePlayers: number[];
     includePlayers: number[];
     historicalData: HistoricalSeasonData[];
+    strategy?: OptimizationStrategy; // Optional strategy parameters
 }
 
 export interface XPBreakdown {
@@ -38,7 +44,8 @@ export function calculateExpectedPoints(
     player: Player,
     fixtures: Fixture[],
     gameweeks: number,
-    historicalData: HistoricalSeasonData[] = []
+    historicalData: HistoricalSeasonData[] = [],
+    strategy?: OptimizationStrategy
 ): { totalXP: number, breakdown: XPBreakdown } {
     let totalXP = 0;
     const playerTeam = player.team;
@@ -71,29 +78,73 @@ export function calculateExpectedPoints(
         }
     }
 
+    // Calculate dynamic weights based on strategy timeHorizon
+    // timeHorizon: -1 (short-term) to 1 (long-term)
+    const timeHorizon = strategy?.timeHorizon ?? 0;
+
+    // Map timeHorizon to weights
+    // Short-term (-1): 70% recent, 20% season, 10% historical
+    // Balanced (0): 35% recent, 35% season, 30% historical
+    // Long-term (1): 15% recent, 30% season, 55% historical
+    let recentWeight = 0.35 - (timeHorizon * 0.275); // -1: 0.625, 0: 0.35, 1: 0.075
+    let seasonWeight = 0.35 - (timeHorizon * 0.05);  // -1: 0.40, 0: 0.35, 1: 0.30
+    let historyWeight = 0.30 + (timeHorizon * 0.325); // -1: -0.025, 0: 0.30, 1: 0.625
+
+    // Normalize weights to ensure they sum to 1.0
+    const totalWeight = recentWeight + seasonWeight + historyWeight;
+    recentWeight /= totalWeight;
+    seasonWeight /= totalWeight;
+    historyWeight /= totalWeight;
+
     // Weighted Base Points
     // If we have historical data, use it to stabilize the prediction
     let basePoints = 0;
     let confidenceScore = 0;
 
     if (historicalMatchesCount > 10) {
-        // Player has history: Balance recent form, season form, and history
-        // 35% Recent, 35% Season, 30% History
-        basePoints = (recentForm * 0.35) + (seasonPPG * 0.35) + (historicalPPG * 0.30);
+        // Player has history: Use dynamic weights
+        basePoints = (recentForm * recentWeight) + (seasonPPG * seasonWeight) + (historicalPPG * historyWeight);
 
         // Consistency Bonus: If historical PPG is high (> 4.5), boost slightly
         if (historicalPPG > 4.5) basePoints += 0.5;
 
         confidenceScore = 90; // High confidence with history
     } else {
-        // New player or lack of history: Rely on season form and recent form
-        // 60% Recent, 40% Season (Form is more volatile but important for new players)
-        basePoints = (recentForm * 0.6) + (seasonPPG * 0.4);
+        // New player or lack of history: Rely more on recent form
+        // Adjust weights when no history available
+        const noHistoryRecentWeight = 0.60 - (timeHorizon * 0.10); // -1: 0.70, 0: 0.60, 1: 0.50
+        const noHistorySeasonWeight = 0.40 + (timeHorizon * 0.10); // -1: 0.30, 0: 0.40, 1: 0.50
+
+        basePoints = (recentForm * noHistoryRecentWeight) + (seasonPPG * noHistorySeasonWeight);
 
         if (player.minutes > 500) {
             confidenceScore = 70; // Moderate confidence if played enough this season
         } else {
             confidenceScore = 40; // Low confidence for new/bench players
+        }
+    }
+
+    // Apply risk tolerance adjustments
+    const riskTolerance = strategy?.riskTolerance ?? 0;
+
+    if (riskTolerance < 0) {
+        // Conservative: Penalize low-confidence players
+        if (confidenceScore < 70) {
+            basePoints *= (1 + (riskTolerance * 0.3)); // Reduce up to 30% for low confidence
+        }
+        // Bonus for high minutes played (proven starters)
+        if (player.minutes > 1500) {
+            basePoints *= 1.05; // 5% bonus for nailed-on players
+        }
+    } else if (riskTolerance > 0) {
+        // Aggressive: Boost high-upside players
+        // Reward players with high ceiling (good form even if inconsistent)
+        if (recentForm > seasonPPG * 1.2) {
+            basePoints *= (1 + (riskTolerance * 0.15)); // Up to 15% boost for in-form players
+        }
+        // Accept rotation risks if xP is high
+        if (player.minutes < 1000 && basePoints > 5) {
+            basePoints *= (1 + (riskTolerance * 0.1)); // Up to 10% boost for differential picks
         }
     }
 
@@ -184,7 +235,13 @@ export function optimizeTeam(
 ): OptimizedTeam {
     // 1. Calculate xP for all players
     const playersWithXP: PlayerWithXP[] = allPlayers.map(p => {
-        const { totalXP, breakdown } = calculateExpectedPoints(p, fixtures, settings.gameweeks, settings.historicalData);
+        const { totalXP, breakdown } = calculateExpectedPoints(
+            p,
+            fixtures,
+            settings.gameweeks,
+            settings.historicalData,
+            settings.strategy // Pass strategy through
+        );
         return {
             ...p,
             xP: totalXP,
@@ -465,6 +522,7 @@ export function optimizeTeam(
  * @param historicalData - Optional historical season data for better predictions
  * @param excludePlayers - Optional array of player IDs to exclude
  * @param includePlayers - Optional array of player IDs to force include
+ * @param strategy - Optional strategy settings for time horizon and risk tolerance
  * @returns OptimizedTeam with 100.0m budget
  */
 export function createBestTeam(
@@ -473,14 +531,16 @@ export function createBestTeam(
     gameweeks: number = 1,
     historicalData: HistoricalSeasonData[] = [],
     excludePlayers: number[] = [],
-    includePlayers: number[] = []
+    includePlayers: number[] = [],
+    strategy?: OptimizationStrategy
 ): OptimizedTeam {
     const settings: OptimizationSettings = {
         budget: 100.0,
         gameweeks,
         excludePlayers,
         includePlayers,
-        historicalData
+        historicalData,
+        strategy
     };
 
     return optimizeTeam(allPlayers, fixtures, settings);
