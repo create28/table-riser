@@ -55,9 +55,11 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
         // Small delay to allow UI to update
         setTimeout(() => {
             const gameweeks = activeTab === 'freehit' ? 1 : activeTab === 'wildcard' ? 5 : 3;
-            const budget = budgetValue * 10; // Convert millions to 0.1m units (e.g., 100 -> 1000)
+            // Budget is in millions (e.g., 100 = £100.0m)
+            // The optimizeTeam function expects budget in millions and converts internally
+            const budget = budgetValue;
 
-            console.log(`Optimizing with budget: £${budgetValue}m (${budget} in 0.1m units)`);
+            console.log(`Optimizing with budget: £${budgetValue}m`);
 
             const result = optimizeTeam(allPlayers, fixtures, {
                 budget,
