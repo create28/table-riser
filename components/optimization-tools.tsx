@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { optimizeTeam, OptimizedTeam, PlayerWithXP } from '@/lib/optimization';
+import { loadHistoricalData, HistoricalSeasonData } from '@/lib/historical-data';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Wand2, CalendarDays } from 'lucide-react';
 
@@ -21,9 +22,26 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
     const [optimizedTeam, setOptimizedTeam] = useState<OptimizedTeam | null>(null);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [activeTab, setActiveTab] = useState<'freehit' | 'wildcard'>('freehit');
+    const [historicalData, setHistoricalData] = useState<HistoricalSeasonData[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
     const handleOptimize = async () => {
         setIsOptimizing(true);
+
+        let currentHistory = historicalData;
+
+        // Load historical data if not already loaded
+        if (currentHistory.length === 0) {
+            setIsLoadingHistory(true);
+            try {
+                currentHistory = await loadHistoricalData();
+                setHistoricalData(currentHistory);
+            } catch (error) {
+                console.error("Failed to load historical data", error);
+            } finally {
+                setIsLoadingHistory(false);
+            }
+        }
 
         // Small delay to allow UI to update
         setTimeout(() => {
@@ -32,7 +50,8 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                 budget: 1000, // Standard 100m budget for chips usually, or use currentBudget
                 gameweeks,
                 excludePlayers: [],
-                includePlayers: []
+                includePlayers: [],
+                historicalData: currentHistory
             });
 
             setOptimizedTeam(result);
@@ -114,7 +133,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                 {isOptimizing ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Optimizing Team...
+                                        {isLoadingHistory ? 'Loading Historical Data...' : 'Optimizing Team...'}
                                     </>
                                 ) : (
                                     `Generate ${activeTab === 'freehit' ? 'Free Hit' : 'Wildcard'} Team`

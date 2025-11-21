@@ -1,10 +1,12 @@
 import { Player, Team, Fixture } from './fpl-api';
+import { HistoricalSeasonData, findHistoricalMatches } from './historical-data';
 
 export interface OptimizationSettings {
     budget: number;
     gameweeks: number; // 1 for Free Hit, >1 for Wildcard
     excludePlayers: number[];
     includePlayers: number[];
+    historicalData: HistoricalSeasonData[];
 }
 
 export interface PlayerWithXP extends Player {
@@ -24,7 +26,8 @@ export interface OptimizedTeam {
 export function calculateExpectedPoints(
     player: Player,
     fixtures: Fixture[],
-    gameweeks: number
+    gameweeks: number,
+    historicalData: HistoricalSeasonData[] = []
 ): number {
     let totalXP = 0;
     const playerTeam = player.team;
@@ -35,12 +38,47 @@ export function calculateExpectedPoints(
         .sort((a, b) => a.event - b.event)
         .slice(0, gameweeks);
 
-    // Base form points (weighted average of recent form and season PPG)
-    const form = parseFloat(player.form);
-    const ppg = parseFloat(player.points_per_game);
-    const basePoints = (form * 0.7) + (ppg * 0.3);
+    // --- SCORING MODEL ---
 
-    // If player has no minutes, return 0
+    // 1. Recent Form (Last 30 days / 5 GWs approx)
+    // 'form' attribute in API is average points per game over last 30 days
+    const recentForm = parseFloat(player.form);
+
+    // 2. Season Form (Points Per Game)
+    const seasonPPG = parseFloat(player.points_per_game);
+
+    // 3. Historical Baseline (Previous Seasons)
+    let historicalPPG = 0;
+    let historicalMatchesCount = 0;
+
+    if (historicalData.length > 0) {
+        const matches = findHistoricalMatches(player.web_name, historicalData);
+        if (matches.length > 0) {
+            const totalPoints = matches.reduce((sum, m) => sum + m.totalPoints, 0);
+            historicalPPG = totalPoints / matches.length;
+            historicalMatchesCount = matches.length;
+        }
+    }
+
+    // Weighted Base Points
+    // If we have historical data, use it to stabilize the prediction
+    let basePoints = 0;
+
+    if (historicalMatchesCount > 10) {
+        // Player has history: Balance recent form, season form, and history
+        // 35% Recent, 35% Season, 30% History
+        basePoints = (recentForm * 0.35) + (seasonPPG * 0.35) + (historicalPPG * 0.30);
+
+        // Consistency Bonus: If historical PPG is high (> 4.5), boost slightly
+        if (historicalPPG > 4.5) basePoints += 0.5;
+
+    } else {
+        // New player or lack of history: Rely on season form and recent form
+        // 60% Recent, 40% Season (Form is more volatile but important for new players)
+        basePoints = (recentForm * 0.6) + (seasonPPG * 0.4);
+    }
+
+    // If player has no minutes, return 0 (unless high chance of playing)
     if (player.minutes === 0 && player.chance_of_playing_next_round !== 100) return 0;
 
     // Check injury status
@@ -91,7 +129,7 @@ export function optimizeTeam(
     // 1. Calculate xP for all players
     const playersWithXP: PlayerWithXP[] = allPlayers.map(p => ({
         ...p,
-        xP: calculateExpectedPoints(p, fixtures, settings.gameweeks)
+        xP: calculateExpectedPoints(p, fixtures, settings.gameweeks, settings.historicalData)
     })).filter(p => p.xP > 0); // Remove players with 0 xP
 
     // 2. Sort by xP descending
