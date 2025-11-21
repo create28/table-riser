@@ -30,6 +30,9 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
     const [historicalData, setHistoricalData] = useState<HistoricalSeasonData[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [budgetValue, setBudgetValue] = useState(100); // Budget in millions (100 = £100.0m)
+    const [lastOptimizedBudget, setLastOptimizedBudget] = useState<number | null>(null);
+
+    const budgetChanged = lastOptimizedBudget !== null && lastOptimizedBudget !== budgetValue;
 
     const handleOptimize = async () => {
         setIsOptimizing(true);
@@ -53,6 +56,9 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
         setTimeout(() => {
             const gameweeks = activeTab === 'freehit' ? 1 : activeTab === 'wildcard' ? 5 : 3;
             const budget = budgetValue * 10; // Convert millions to 0.1m units (e.g., 100 -> 1000)
+
+            console.log(`Optimizing with budget: £${budgetValue}m (${budget} in 0.1m units)`);
+
             const result = optimizeTeam(allPlayers, fixtures, {
                 budget,
                 gameweeks,
@@ -61,7 +67,10 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                 historicalData: currentHistory
             });
 
+            console.log(`Result total cost: £${(result.totalCost / 10).toFixed(1)}m`);
+
             setOptimizedTeam(result);
+            setLastOptimizedBudget(budgetValue);
             setIsOptimizing(false);
         }, 100);
     };
@@ -245,6 +254,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                 disabled={isOptimizing}
                                 className="w-full"
                                 size="lg"
+                                variant={budgetChanged ? "default" : "default"}
                             >
                                 {isOptimizing ? (
                                     <>
@@ -252,7 +262,13 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                         {isLoadingHistory ? 'Loading Historical Data...' : 'Optimizing Team...'}
                                     </>
                                 ) : (
-                                    `Generate ${activeTab === 'bestteam' ? 'Best' : activeTab === 'freehit' ? 'Free Hit' : 'Wildcard'} Team`
+                                    <>
+                                        {budgetChanged && <span className="mr-2">⚠️</span>}
+                                        {budgetChanged
+                                            ? `Apply £${budgetValue.toFixed(1)}m Budget`
+                                            : `Generate ${activeTab === 'bestteam' ? 'Best' : activeTab === 'freehit' ? 'Free Hit' : 'Wildcard'} Team`
+                                        }
+                                    </>
                                 )}
                             </Button>
                         </div>
