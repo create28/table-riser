@@ -12,6 +12,8 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Wand2, CalendarDays } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 interface OptimizationToolsProps {
     allPlayers: Player[];
@@ -26,6 +28,7 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
     const [activeTab, setActiveTab] = useState<'freehit' | 'wildcard'>('freehit');
     const [historicalData, setHistoricalData] = useState<HistoricalSeasonData[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [limitBudget, setLimitBudget] = useState(true); // Default to true (100m limit)
 
     const handleOptimize = async () => {
         setIsOptimizing(true);
@@ -48,8 +51,9 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
         // Small delay to allow UI to update
         setTimeout(() => {
             const gameweeks = activeTab === 'freehit' ? 1 : 5;
+            const budget = limitBudget ? 1000 : 10000; // 100m or unlimited (1000m)
             const result = optimizeTeam(allPlayers, fixtures, {
-                budget: 1000, // Standard 100m budget for chips usually, or use currentBudget
+                budget,
                 gameweeks,
                 excludePlayers: [],
                 includePlayers: [],
@@ -195,6 +199,20 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                                     ? 'Optimizes for the absolute maximum points in the upcoming gameweek only. Ignores long-term value and upcoming fixtures beyond the next match.'
                                     : 'Builds a balanced squad optimized for the next 5 gameweeks. Balances immediate points with long-term stability and fixture difficulty.'}
                             </p>
+
+                            <div className="flex items-center space-x-2 mb-4">
+                                <Checkbox
+                                    id="budget-limit"
+                                    checked={limitBudget}
+                                    onCheckedChange={(checked) => setLimitBudget(checked as boolean)}
+                                />
+                                <Label
+                                    htmlFor="budget-limit"
+                                    className="text-sm font-normal cursor-pointer"
+                                >
+                                    Limit budget to £100.0m
+                                </Label>
+                            </div>
 
                             <Button
                                 onClick={handleOptimize}
