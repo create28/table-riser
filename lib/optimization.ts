@@ -92,27 +92,28 @@ export function calculateExpectedPoints(
 
         // Difficulty multiplier (easier = higher multiplier)
         // Difficulty 1-5. 
-        // 1 -> 1.2x
-        // 2 -> 1.1x
+        // 1 -> 1.25x (Was 1.3)
+        // 2 -> 1.15x (Was 1.2)
         // 3 -> 1.0x
-        // 4 -> 0.9x
-        // 5 -> 0.8x
-        const difficultyMultiplier = 1.3 - (difficulty * 0.1);
+        // 4 -> 0.85x (Was 0.9)
+        // 5 -> 0.7x (Was 0.8)
+        // Adjusted to be slightly more conservative on the high end but harsher on the low end
+        let difficultyMultiplier = 1.0;
+        if (difficulty === 1) difficultyMultiplier = 1.25;
+        else if (difficulty === 2) difficultyMultiplier = 1.15;
+        else if (difficulty === 3) difficultyMultiplier = 1.0;
+        else if (difficulty === 4) difficultyMultiplier = 0.85;
+        else if (difficulty >= 5) difficultyMultiplier = 0.7;
 
         // Home advantage multiplier
-        const homeMultiplier = isHome ? 1.1 : 0.95;
+        // Reduced slightly: 1.1 -> 1.05
+        const homeMultiplier = isHome ? 1.05 : 0.95;
 
         let matchXP = basePoints * difficultyMultiplier * homeMultiplier;
 
-        // Position specific adjustments
-        if (player.element_type === 1 || player.element_type === 2) { // GK or DEF
-            // Clean sheet probability proxy based on difficulty
-            if (difficulty <= 2) matchXP += 2; // High CS chance
-        } else if (player.element_type === 3) { // MID
-            if (difficulty <= 2) matchXP += 1;
-        } else if (player.element_type === 4) { // FWD
-            if (difficulty <= 2) matchXP += 1.5;
-        }
+        // Removed flat bonuses to avoid double counting.
+        // The basePoints (PPG) already accounts for the player's average return (goals/CS).
+        // The multipliers scale this average based on fixture difficulty.
 
         totalXP += matchXP;
     }
