@@ -11,6 +11,7 @@ import { getTransferOutCandidates, getTransferInCandidates, TransferCandidate } 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { PlayerStatusBadges } from '@/components/player-status-badges';
 
 interface TransferSuggestionsProps {
   currentPlayers: Player[];
@@ -143,12 +144,18 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                   {transferOutCandidates.map(({ player, reasons, score, breakdown }) => (
                     <TableRow key={player.id} className={getRowClassName(player.id)}>
                       <TableCell className="font-medium">
-                        <button
-                          onClick={() => onPlayerClick?.(player)}
-                          className="hover:text-primary hover:underline cursor-pointer text-left"
-                        >
-                          {player.web_name}
-                        </button>
+                        <div className="flex items-center">
+                          <button
+                            onClick={() => onPlayerClick?.(player)}
+                            className="hover:text-primary hover:underline cursor-pointer text-left"
+                          >
+                            {player.web_name}
+                          </button>
+                          <PlayerStatusBadges
+                            player={player}
+                            playerHistory={playerHistories?.[player.id]}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell>{getTeamName(player.team)}</TableCell>
                       <TableCell className="text-right">{player.form}</TableCell>
@@ -221,12 +228,18 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                       {candidates.map(({ player, reasons, score, breakdown }) => (
                         <TableRow key={player.id} className={getRowClassName(player.id)}>
                           <TableCell className="font-medium">
-                            <button
-                              onClick={() => onPlayerClick?.(player)}
-                              className="hover:text-primary hover:underline cursor-pointer text-left"
-                            >
-                              {player.web_name}
-                            </button>
+                            <div className="flex items-center">
+                              <button
+                                onClick={() => onPlayerClick?.(player)}
+                                className="hover:text-primary hover:underline cursor-pointer text-left"
+                              >
+                                {player.web_name}
+                              </button>
+                              <PlayerStatusBadges
+                                player={player}
+                                playerHistory={playerHistories?.[player.id]}
+                              />
+                            </div>
                           </TableCell>
                           <TableCell>{getTeamName(player.team)}</TableCell>
                           <TableCell className="text-right">£{(player.now_cost / 10).toFixed(1)}m</TableCell>

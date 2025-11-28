@@ -9,15 +9,17 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { PlayerStatusBadges } from '@/components/player-status-badges';
 
 interface UnderperformersListProps {
     allPlayers: Player[];
     teams: Team[];
     fixtures: Fixture[];
     onPlayerClick?: (player: Player) => void;
+    playerHistories?: { [key: number]: any };
 }
 
-export function UnderperformersList({ allPlayers, teams, fixtures, onPlayerClick }: UnderperformersListProps) {
+export function UnderperformersList({ allPlayers, teams, fixtures, onPlayerClick, playerHistories }: UnderperformersListProps) {
     const [showGoodFixturesOnly, setShowGoodFixturesOnly] = useState(false);
 
     // Helper to get team name
@@ -133,14 +135,22 @@ export function UnderperformersList({ allPlayers, teams, fixtures, onPlayerClick
                             underperformers.map(({ player, xGI, actualGI, delta, upcoming }) => (
                                 <TableRow key={player.id}>
                                     <TableCell className="font-medium">
-                                        <button
-                                            onClick={() => onPlayerClick?.(player)}
-                                            className="hover:text-primary hover:underline cursor-pointer text-left"
-                                        >
-                                            {player.web_name}
-                                        </button>
-                                        <div className="text-xs text-muted-foreground">
-                                            {player.element_type === 1 ? 'GKP' : player.element_type === 2 ? 'DEF' : player.element_type === 3 ? 'MID' : 'FWD'}
+                                        <div className="flex items-center">
+                                            <div>
+                                                <button
+                                                    onClick={() => onPlayerClick?.(player)}
+                                                    className="hover:text-primary hover:underline cursor-pointer text-left"
+                                                >
+                                                    {player.web_name}
+                                                </button>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {player.element_type === 1 ? 'GKP' : player.element_type === 2 ? 'DEF' : player.element_type === 3 ? 'MID' : 'FWD'}
+                                                </div>
+                                            </div>
+                                            <PlayerStatusBadges
+                                                player={player}
+                                                playerHistory={playerHistories?.[player.id]}
+                                            />
                                         </div>
                                     </TableCell>
                                     <TableCell>{getTeamName(player.team)}</TableCell>

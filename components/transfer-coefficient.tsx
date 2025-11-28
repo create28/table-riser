@@ -18,11 +18,11 @@ export function TransferCoefficient({ players, onPlayerClick }: TransferCoeffici
     const transfersIn = player.transfers_in_event;
     const transfersOut = player.transfers_out_event;
     const netTransfers = transfersIn - transfersOut;
-    
+
     // Transfer pressure coefficient considering ownership
     const transferInCoefficient = (transfersIn / 1000) * (1 + ownership / 100);
     const transferOutCoefficient = (transfersOut / 1000) * (1 + ownership / 100);
-    
+
     return {
       ...player,
       transfersIn,
@@ -51,87 +51,61 @@ export function TransferCoefficient({ players, onPlayerClick }: TransferCoeffici
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Transfer Pressure Analysis</CardTitle>
-        <CardDescription>Weighted by ownership percentage</CardDescription>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">Transfer Pressure</CardTitle>
+        <CardDescription>Market trends weighted by ownership</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="in" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="in">Transfers In</TabsTrigger>
-            <TabsTrigger value="out">Transfers Out</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 mb-2 h-8">
+            <TabsTrigger value="in" className="text-xs">Transfers In</TabsTrigger>
+            <TabsTrigger value="out" className="text-xs">Transfers Out</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="in">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Player</TableHead>
-                  <TableHead className="text-right">Ownership %</TableHead>
-                  <TableHead className="text-right">Transfers In</TableHead>
-                  <TableHead className="text-right">Coefficient</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedByTransfersIn.map(player => (
-                  <TableRow key={player.id}>
-                    <TableCell className="font-medium">
-                      <button
-                        onClick={() => onPlayerClick?.(player)}
-                        className="hover:text-primary hover:underline cursor-pointer text-left"
-                      >
-                        {player.web_name}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right">{player.ownership}%</TableCell>
-                    <TableCell className="text-right">
-                      {player.transfersIn.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge className={`${getTransferInBadgeColor(player.transferInCoefficient)} text-white`}>
-                        {player.transferInCoefficient.toFixed(1)}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-1">
+              {sortedByTransfersIn.slice(0, 5).map(player => (
+                <div key={player.id} className="flex items-center justify-between text-sm p-1 hover:bg-muted/50 rounded">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`${getTransferInBadgeColor(player.transferInCoefficient)} text-white h-5 px-1.5 text-[10px]`}>
+                      {player.transferInCoefficient.toFixed(1)}
+                    </Badge>
+                    <button
+                      onClick={() => onPlayerClick?.(player)}
+                      className="hover:text-primary hover:underline cursor-pointer text-left truncate max-w-[120px]"
+                    >
+                      {player.web_name}
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {player.transfersIn.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="out">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Player</TableHead>
-                  <TableHead className="text-right">Ownership %</TableHead>
-                  <TableHead className="text-right">Transfers Out</TableHead>
-                  <TableHead className="text-right">Coefficient</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedByTransfersOut.map(player => (
-                  <TableRow key={player.id}>
-                    <TableCell className="font-medium">
-                      <button
-                        onClick={() => onPlayerClick?.(player)}
-                        className="hover:text-primary hover:underline cursor-pointer text-left"
-                      >
-                        {player.web_name}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right">{player.ownership}%</TableCell>
-                    <TableCell className="text-right">
-                      {player.transfersOut.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge className={`${getTransferOutBadgeColor(player.transferOutCoefficient)} text-white`}>
-                        {player.transferOutCoefficient.toFixed(1)}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-1">
+              {sortedByTransfersOut.slice(0, 5).map(player => (
+                <div key={player.id} className="flex items-center justify-between text-sm p-1 hover:bg-muted/50 rounded">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`${getTransferOutBadgeColor(player.transferOutCoefficient)} text-white h-5 px-1.5 text-[10px]`}>
+                      {player.transferOutCoefficient.toFixed(1)}
+                    </Badge>
+                    <button
+                      onClick={() => onPlayerClick?.(player)}
+                      className="hover:text-primary hover:underline cursor-pointer text-left truncate max-w-[120px]"
+                    >
+                      {player.web_name}
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {player.transfersOut.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
           </TabsContent>
         </Tabs>
       </CardContent>

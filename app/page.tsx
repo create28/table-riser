@@ -34,16 +34,38 @@ async function getDashboardData(teamId: number) {
     // Get unique team IDs from players
     const playerTeams = teamPlayers.map(player => player.team);
 
-    // Fetch player histories for all squad players
-    // For volatility analysis, we'll also include top performers (limit to reasonable number for performance)
-    const topPlayersByPoints = [...bootstrapData.elements]
-      .sort((a, b) => b.total_points - a.total_points)
-      .slice(0, 50); // Top 50 players by points
+    // Fetch player histories for all visible players on the dashboard
+    // This includes squad players + top performers shown in various components
+    const playersToFetchHistory = new Set<number>();
 
-    const playersToFetchHistory = new Set([
-      ...teamPlayers.map(p => p.id),
-      ...topPlayersByPoints.map(p => p.id)
-    ]);
+    // Add squad players
+    teamPlayers.forEach(p => playersToFetchHistory.add(p.id));
+
+    // Add top 100 by points (shown in various tables)
+    const topByPoints = [...bootstrapData.elements]
+      .sort((a, b) => b.total_points - a.total_points)
+      .slice(0, 100);
+    topByPoints.forEach(p => playersToFetchHistory.add(p.id));
+
+    // Add top 50 by form (shown in PlayerForm component)
+    const topByForm = [...bootstrapData.elements]
+      .filter(p => p.minutes > 300)
+      .sort((a, b) => parseFloat(b.form) - parseFloat(a.form))
+      .slice(0, 50);
+    topByForm.forEach(p => playersToFetchHistory.add(p.id));
+
+    // Add top 50 by value efficiency (shown in ValueEfficiency component)
+    const topByValue = [...bootstrapData.elements]
+      .filter(p => p.total_points > 0 && p.minutes > 300)
+      .sort((a, b) => {
+        const valueA = a.total_points / (a.now_cost / 10);
+        const valueB = b.total_points / (b.now_cost / 10);
+        return valueB - valueA;
+      })
+      .slice(0, 50);
+    topByValue.forEach(p => playersToFetchHistory.add(p.id));
+
+    console.log(`Fetching player histories for ${playersToFetchHistory.size} players...`);
 
     const playerHistories: { [key: number]: any } = {};
     await Promise.all(
