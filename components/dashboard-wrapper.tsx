@@ -29,7 +29,7 @@ export function DashboardWrapper({ initialTeamId, children }: DashboardWrapperPr
           <h1 className="text-5xl font-bold bg-gradient-to-r from-amber-700 via-orange-600 to-rose-600 bg-clip-text text-transparent">
             FPL Dashboard
           </h1>
-          
+
           {/* Navigation */}
           <div className="flex justify-center gap-3">
             <Link href={`/strategy?teamId=${currentTeamId}`}>
@@ -38,11 +38,17 @@ export function DashboardWrapper({ initialTeamId, children }: DashboardWrapperPr
                 5-Week Transfer Strategy
               </Button>
             </Link>
+            <Link href={`/lineup?teamId=${currentTeamId}`}>
+              <Button variant="outline" className="gap-2">
+                <span className="text-lg">⚽</span>
+                Best Lineup
+              </Button>
+            </Link>
           </div>
 
           {/* Team ID Input */}
           <div className="max-w-2xl mx-auto">
-            <TeamIdInput 
+            <TeamIdInput
               currentTeamId={currentTeamId}
               onTeamIdChange={handleTeamIdChange}
             />

@@ -33,7 +33,7 @@ git add .
 git commit -m "Initial commit - FPL Dashboard"
 
 # Create a new repository on GitHub, then:
-git remote add origin https://github.com/YOUR_USERNAME/fpl-dashboard.git
+git remote add origin https://github.com/create28/table-riser.git
 git branch -M main
 git push -u origin main
 ```
@@ -243,6 +243,7 @@ If you run into issues:
 Follow Step 2 to push to GitHub, then Step 3 to deploy to Vercel.
 
 Your friends will be able to access the dashboard at your Vercel URL within minutes!
+
 
 
 

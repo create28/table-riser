@@ -59,7 +59,8 @@ export function TeamIdInput({ currentTeamId, onTeamIdChange }: TeamIdInputProps)
                 setInputValue(e.target.value);
                 setError('');
               }}
-              placeholder="Enter team ID (e.g., 3992229)"
+              placeholder="Enter team ID (e.g., 12345678)"
+              maxLength={12}
               className="w-full p-2 border rounded-md bg-background focus:ring-2 focus:ring-primary focus:outline-none"
             />
             {error && (
@@ -82,6 +83,7 @@ export function TeamIdInput({ currentTeamId, onTeamIdChange }: TeamIdInputProps)
     </Card>
   );
 }
+
 
 
 

@@ -17,7 +17,7 @@ async function getDashboardData(teamId: number) {
     ]);
 
     const currentGameweek = getCurrentGameweek(bootstrapData.events);
-    
+
     // Fetch manager's team for current gameweek
     const managerTeam = await fetchManagerTeam(teamId, currentGameweek);
     const managerInfo = await fetchManagerInfo(teamId);
@@ -25,9 +25,9 @@ async function getDashboardData(teamId: number) {
     // Get player IDs from manager's team
     const playerIds = managerTeam.picks.map(pick => pick.element);
     const playerIdsSet = new Set(playerIds);
-    
+
     // Get full player details
-    const teamPlayers = bootstrapData.elements.filter(player => 
+    const teamPlayers = bootstrapData.elements.filter(player =>
       playerIds.includes(player.id)
     );
 
@@ -39,7 +39,7 @@ async function getDashboardData(teamId: number) {
     const topPlayersByPoints = [...bootstrapData.elements]
       .sort((a, b) => b.total_points - a.total_points)
       .slice(0, 50); // Top 50 players by points
-    
+
     const playersToFetchHistory = new Set([
       ...teamPlayers.map(p => p.id),
       ...topPlayersByPoints.map(p => p.id)
@@ -114,7 +114,7 @@ export default async function Home({
             <div>
               <p className="text-sm text-muted-foreground">Overall Rank</p>
               <p className="text-2xl font-bold text-amber-700 dark:text-amber-500">
-                {data.entryHistory.overall_rank.toLocaleString()}
+                {data.entryHistory.overall_rank?.toLocaleString() ?? '-'}
               </p>
             </div>
             <div>

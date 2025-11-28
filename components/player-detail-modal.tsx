@@ -18,12 +18,12 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
   if (!player) return null;
 
   const history = playerHistory?.history || [];
-  
+
   // Construct player image URL using the player code
   // Premier League resources host player images at this pattern
   const playerImageUrl = `https://resources.premierleague.com/premierleague/photos/players/250x250/p${player.code}.png`;
   const fallbackImageUrl = `https://resources.premierleague.com/premierleague/photos/players/110x140/p${player.code}.png`;
-  
+
   // Prepare data for charts
   const gameweekData = history.map((match: any) => ({
     gameweek: `GW${match.round}`,
@@ -37,7 +37,7 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
 
   // Last 5 games data
   const last5Games = gameweekData.slice(-5);
-  
+
   // Calculate stats
   const totalGames = history.length;
   const avgPoints = totalGames > 0 ? history.reduce((sum: number, m: any) => sum + m.total_points, 0) / totalGames : 0;
@@ -68,19 +68,34 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
                 }}
               />
             </div>
-            
+
             {/* Player Info */}
             <div className="flex-1">
-              <DialogTitle className="text-2xl flex items-center gap-3 mb-2">
+              <DialogTitle className="text-2xl flex items-center gap-3 mb-2 flex-wrap">
                 {player.web_name}
                 <Badge variant="outline" className="text-sm">
                   {team?.short_name || 'Team'}
                 </Badge>
+                {player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined && player.chance_of_playing_next_round < 100 && (
+                  <Badge variant="destructive" className="bg-red-500 hover:bg-red-600">
+                    {player.chance_of_playing_next_round === 0 ? 'Unavailable' : `${player.chance_of_playing_next_round}% Chance`}
+                  </Badge>
+                )}
+                {player.chance_of_playing_next_round === null && player.news && (
+                  <Badge variant="secondary" className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                    Status Uncertain
+                  </Badge>
+                )}
               </DialogTitle>
               <DialogDescription className="text-base">
                 <div className="space-y-1">
                   <div>£{(player.now_cost / 10).toFixed(1)}m | {player.element_type === 1 ? 'Goalkeeper' : player.element_type === 2 ? 'Defender' : player.element_type === 3 ? 'Midfielder' : 'Forward'}</div>
                   <div className="text-xs">{player.first_name} {player.second_name}</div>
+                  {player.news && (
+                    <div className="mt-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-2 rounded border border-red-100 dark:border-red-900">
+                      ⚠️ {player.news}
+                    </div>
+                  )}
                 </div>
               </DialogDescription>
             </div>
@@ -149,9 +164,9 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="gameweek" style={{ fontSize: '12px' }} />
                 <YAxis style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--popover)', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--popover)',
                     border: '1px solid var(--border)',
                     borderRadius: '6px'
                   }}
@@ -176,15 +191,15 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={gameweekData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis 
-                  dataKey="gameweek" 
+                <XAxis
+                  dataKey="gameweek"
                   style={{ fontSize: '10px' }}
                   interval={gameweekData.length > 15 ? 1 : 0}
                 />
                 <YAxis style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--popover)', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--popover)',
                     border: '1px solid var(--border)',
                     borderRadius: '6px'
                   }}
@@ -209,10 +224,10 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
                   }}
                 />
                 <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="points" 
-                  stroke="#f59e0b" 
+                <Line
+                  type="monotone"
+                  dataKey="points"
+                  stroke="#f59e0b"
                   strokeWidth={2}
                   dot={{ fill: '#f59e0b', r: 4 }}
                   activeDot={{ r: 6 }}

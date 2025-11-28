@@ -168,16 +168,43 @@ export function calculateExpectedPoints(
         };
     }
 
-    // Check injury status
-    if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined && player.chance_of_playing_next_round < 75) {
-        return {
-            totalXP: 0,
-            breakdown: {
-                basePoints, recentForm, seasonPPG, historicalPPG,
-                difficultyMultiplier: 0, homeMultiplier: 0, confidenceScore: 100 // Confident they won't play
+    // Check injury status and apply probability multiplier
+    let injuryMultiplier = 1.0;
+
+    if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined) {
+        // Apply multiplier based on chance of playing
+        // 100% -> 1.0
+        // 75% -> 0.75
+        // 50% -> 0.5
+        // 25% -> 0.25
+        // 0% -> 0.0
+        injuryMultiplier = player.chance_of_playing_next_round / 100;
+
+        // If chance is 0, we can return early unless we want to keep them for bench
+        if (injuryMultiplier === 0) {
+            return {
+                totalXP: 0,
+                breakdown: {
+                    basePoints, recentForm, seasonPPG, historicalPPG,
+                    difficultyMultiplier: 0, homeMultiplier: 0, confidenceScore: 0
+                }
+            };
+        }
+    } else if (player.news && player.news.length > 0) {
+        // If chance is null but there is news, it might be a new injury or suspension
+        // We should be conservative
+        // Check for keywords
+        const lowerNews = player.news.toLowerCase();
+        if (lowerNews.includes('suspended') || lowerNews.includes('injury') || lowerNews.includes('unavailable')) {
+            // Assume 0% if not specified but has bad news
+            // But sometimes news is "Expected back..."
+            if (!lowerNews.includes('expected back') && !lowerNews.includes('available')) {
+                injuryMultiplier = 0;
             }
-        };
+        }
     }
+
+    basePoints *= injuryMultiplier;
 
     let avgDifficultyMultiplier = 0;
     let avgHomeMultiplier = 0;
