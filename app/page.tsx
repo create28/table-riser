@@ -122,45 +122,11 @@ export default async function Home({
   const data = await getDashboardData(teamId);
 
   return (
-    <DashboardWrapper initialTeamId={teamId}>
-      {/* Manager Info Card */}
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle className="text-2xl">{data.managerInfo.name}</CardTitle>
-          <CardDescription>
-            Team: {data.managerInfo.player_first_name} {data.managerInfo.player_last_name}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Overall Rank</p>
-              <p className="text-2xl font-bold text-amber-700 dark:text-amber-500">
-                {data.entryHistory.overall_rank?.toLocaleString() ?? '-'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Points</p>
-              <p className="text-2xl font-bold text-orange-700 dark:text-orange-500">
-                {data.entryHistory.total_points}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">GW{data.currentGameweek} Points</p>
-              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-500">
-                {data.entryHistory.points}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Team Value</p>
-              <p className="text-2xl font-bold text-rose-700 dark:text-rose-500">
-                £{(data.entryHistory.value / 10).toFixed(1)}m
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
+    <DashboardWrapper
+      initialTeamId={teamId}
+      managerInfo={data.managerInfo}
+      entryHistory={data.entryHistory}
+    >
       <Separator />
 
       {/* Dashboard Components with Interactive Player Details */}

@@ -74,7 +74,8 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
                 excludePlayers: [],
                 includePlayers: [],
                 historicalData: currentHistory,
-                strategy
+                strategy,
+                chipType: activeTab // Pass the active tab as chipType ('freehit', 'wildcard', 'bestteam')
             });
 
             console.log(`Result total cost: £${(result.totalCost / 10).toFixed(1)}m`);

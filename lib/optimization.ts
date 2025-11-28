@@ -13,6 +13,7 @@ export interface OptimizationSettings {
     includePlayers: number[];
     historicalData: HistoricalSeasonData[];
     strategy?: OptimizationStrategy; // Optional strategy parameters
+    chipType?: 'freehit' | 'wildcard' | 'bestteam';
 }
 
 export interface XPBreakdown {
@@ -292,6 +293,7 @@ export function optimizeTeam(
     const selectedPlayers: typeof playersWithXP = [];
     const teamCounts: { [key: number]: number } = {};
     let currentCost = 0;
+    const currentCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
     // Helper to check constraints
     const canAddPlayer = (player: typeof playersWithXP[0]) => {
@@ -300,25 +302,61 @@ export function optimizeTeam(
         return true;
     };
 
-    // Force include players
+    // --- FREE HIT LOGIC: Fill bench with fodder first ---
+    if (settings.chipType === 'freehit') {
+        // Strategy: Pick 1 GK, 1 DEF, 1 MID, 1 FWD as cheapest possible fodder
+        // This leaves 1 GK, 4 DEF, 4 MID, 2 FWD for starters (flexible enough)
+
+        const fodderTypes = [1, 2, 3, 4];
+
+        for (const type of fodderTypes) {
+            // Find cheapest player of this type who plays (minutes > 0 implies they exist in game)
+            // Actually for fodder we just want cheapest. But maybe avoid 0 minutes if possible?
+            // User said "bench with players that play and don't cost much".
+            // So sort by Cost ASC, then Minutes DESC
+            const candidates = allPlayers
+                .filter(p => p.element_type === type && !settings.excludePlayers.includes(p.id))
+                .sort((a, b) => {
+                    if (a.now_cost !== b.now_cost) return a.now_cost - b.now_cost;
+                    return b.minutes - a.minutes; // Prefer playing fodder if cost is same
+                });
+
+            // Find first valid candidate
+            for (const candidate of candidates) {
+                // We need to convert to PlayerWithXP structure (even with 0 xP is fine for fodder)
+                const candidateWithXP = playersWithXP.find(p => p.id === candidate.id) || {
+                    ...candidate,
+                    xP: 0,
+                    xpBreakdown: undefined
+                } as PlayerWithXP;
+
+                if (canAddPlayer(candidateWithXP)) {
+                    selectedPlayers.push(candidateWithXP);
+                    teamCounts[candidate.team] = (teamCounts[candidate.team] || 0) + 1;
+                    currentCost += candidate.now_cost;
+                    currentCounts[type as keyof typeof currentCounts]++;
+                    break; // Found fodder for this type
+                }
+            }
+        }
+    }
+
+    // Force include players (skip if already added as fodder)
     for (const id of settings.includePlayers) {
+        if (selectedPlayers.find(p => p.id === id)) continue;
+
         const player = playersWithXP.find(p => p.id === id);
         if (player && canAddPlayer(player)) {
             selectedPlayers.push(player);
             teamCounts[player.team] = (teamCounts[player.team] || 0) + 1;
             currentCost += player.now_cost;
+            currentCounts[player.element_type as keyof typeof currentCounts]++;
         }
     }
 
     // Fill positions
     // Requirements: 2 GK, 5 DEF, 5 MID, 3 FWD
     const requirements = { 1: 2, 2: 5, 3: 5, 4: 3 };
-    const currentCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
-
-    // Update counts from forced includes
-    selectedPlayers.forEach(p => {
-        currentCounts[p.element_type as keyof typeof currentCounts]++;
-    });
 
     // Fill remaining slots with best available players
     // Sort players by position for easier selection
@@ -386,8 +424,10 @@ export function optimizeTeam(
 
                     if (cheaperAlternatives.length > 0) {
                         const replacement = cheaperAlternatives[0];
+                        const savings = expensive.now_cost - replacement.now_cost;
 
                         // Check if swapping would allow us to add the player we want
+                        // We need to find *any* player for the target position that fits
                         const targetPlayer = availablePlayers.find(p =>
                             !selectedPlayers.find(sp => sp.id === p.id) &&
                             currentCost - expensive.now_cost + replacement.now_cost + p.now_cost <= settings.budget * 10 &&
@@ -400,10 +440,12 @@ export function optimizeTeam(
                             selectedPlayers.splice(idx, 1);
                             teamCounts[expensive.team]--;
                             currentCost -= expensive.now_cost;
+                            currentCounts[expensivePos]--; // Decrement count for removed player type
 
                             selectedPlayers.push(replacement);
                             teamCounts[replacement.team] = (teamCounts[replacement.team] || 0) + 1;
                             currentCost += replacement.now_cost;
+                            currentCounts[expensivePos]++; // Increment count for replacement (same type)
 
                             // Now add the target player
                             selectedPlayers.push(targetPlayer);
@@ -422,6 +464,7 @@ export function optimizeTeam(
     }
 
     // Final budget validation - if over budget, replace most expensive bench players with cheapest options
+    // For Free Hit, we likely already have cheap bench, but this is a safety net
     while (currentCost > settings.budget * 10 && selectedPlayers.length === 15) {
         // Find bench-worthy players (lowest xP) that are expensive
         const sortedByXP = [...selectedPlayers].sort((a, b) => a.xP - b.xP);
@@ -455,10 +498,12 @@ export function optimizeTeam(
                     selectedPlayers.splice(idx, 1);
                     teamCounts[expensive.team]--;
                     currentCost -= expensive.now_cost;
+                    currentCounts[pos]--;
 
                     selectedPlayers.push(replacement);
                     teamCounts[replacement.team] = (teamCounts[replacement.team] || 0) + 1;
                     currentCost += replacement.now_cost;
+                    currentCounts[pos]++;
 
                     swapped = true;
                     break;
@@ -496,17 +541,13 @@ export function optimizeTeam(
 
     // Check constraints
     const defCount = top10Outfield.filter(p => p.element_type === 2).length;
-    const fwdCount = top10Outfield.filter(p => p.element_type === 4).length;
 
     if (defCount < 3) {
         // Need more defenders. Swap worst non-def starter with best def bencher.
         const bestBenchDef = remainingOutfield.find(p => p.element_type === 2);
         if (bestBenchDef) {
-            // Find worst non-def, non-fwd (if fwd count is low) starter
-            // Actually just swap worst non-def starter
             const worstStarter = [...top10Outfield].reverse().find(p => p.element_type !== 2);
             if (worstStarter) {
-                // Swap
                 const idxS = top10Outfield.indexOf(worstStarter);
                 const idxB = remainingOutfield.indexOf(bestBenchDef);
                 top10Outfield[idxS] = bestBenchDef;
@@ -515,7 +556,7 @@ export function optimizeTeam(
         }
     }
 
-    // Re-check fwd count (though usually we have enough if we picked best players)
+    // Re-check fwd count (min 1)
     const fwdCountNew = top10Outfield.filter(p => p.element_type === 4).length;
     if (fwdCountNew < 1) {
         const bestBenchFwd = remainingOutfield.find(p => p.element_type === 4);
@@ -538,6 +579,11 @@ export function optimizeTeam(
     const captain = sortedStarters[0];
     const viceCaptain = sortedStarters[1];
 
+    // Calculate formation string (not returned by OptimizedTeam, but useful for debugging/internal logic)
+    const finalDef = starters.filter(p => p.element_type === 2).length;
+    const finalMid = starters.filter(p => p.element_type === 3).length;
+    const finalFwd = starters.filter(p => p.element_type === 4).length;
+
     return {
         starters,
         bench,
@@ -559,6 +605,7 @@ export function optimizeTeam(
  * @param excludePlayers - Optional array of player IDs to exclude
  * @param includePlayers - Optional array of player IDs to force include
  * @param strategy - Optional strategy settings for time horizon and risk tolerance
+ * @param chipType - Optional chip type ('freehit', 'wildcard', 'bestteam') to influence optimization strategy
  * @returns OptimizedTeam with 100.0m budget
  */
 export function createBestTeam(
@@ -568,7 +615,8 @@ export function createBestTeam(
     historicalData: HistoricalSeasonData[] = [],
     excludePlayers: number[] = [],
     includePlayers: number[] = [],
-    strategy?: OptimizationStrategy
+    strategy?: OptimizationStrategy,
+    chipType?: 'freehit' | 'wildcard' | 'bestteam'
 ): OptimizedTeam {
     const settings: OptimizationSettings = {
         budget: 100.0,
@@ -576,7 +624,8 @@ export function createBestTeam(
         excludePlayers,
         includePlayers,
         historicalData,
-        strategy
+        strategy,
+        chipType
     };
 
     return optimizeTeam(allPlayers, fixtures, settings);

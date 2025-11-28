@@ -216,9 +216,14 @@ function analyzeChip(
             if (dgw) {
                 reason = `Consider for Double Gameweek ${dgw}`;
             } else {
-                reason = "Save for Blank or Double Gameweek";
+                reason = "Hold for a Blank or Double Gameweek later in the season";
             }
         }
+    }
+
+    // If no specific recommendation found but chip is available, ensure we return a neutral state
+    if (!recommendedGw && !reason) {
+        reason = "Hold for now. No immediate opportunities detected.";
     }
 
     return {

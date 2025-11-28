@@ -18,6 +18,7 @@ import { PlayerPerformance } from '@/components/player-performance';
 import { ChipStrategy } from '@/components/chip-strategy';
 import { getChipStrategy } from '@/lib/chip-strategy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { BestLineup } from '@/components/best-lineup';
 
 interface DashboardClientProps {
   players: Player[];
@@ -134,26 +135,29 @@ export function DashboardClient({
         </TabsContent>
 
         {/* --- BEST LINEUP TAB --- */}
-        <TabsContent value="lineup" className="space-y-4">
-          <div className="flex flex-col items-center justify-center py-12 space-y-4 border rounded-lg bg-muted/10">
-            <h3 className="text-2xl font-bold">Best Lineup Optimizer</h3>
-            <p className="text-muted-foreground text-center max-w-md">
-              Use our advanced optimization tool to pick your best starting XI, captain, and vice-captain for the upcoming gameweek.
-            </p>
-            <a
-              href="/lineup"
-              className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
-            >
-              Go to Best Lineup Tool
-            </a>
+        <TabsContent value="lineup" className="space-y-8">
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Next Gameweek Optimizer</h3>
+            <BestLineup
+              squadPlayers={players}
+              allPlayers={allPlayers}
+              fixtures={fixtures}
+              teams={teams}
+            />
           </div>
 
-          <OptimizationTools
-            allPlayers={allPlayers}
-            fixtures={fixtures}
-            teams={teams}
-            currentBudget={1000}
-          />
+          <div className="pt-8 border-t">
+            <h3 className="text-lg font-semibold mb-4">Wildcard / Free Hit Planner</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Planning a chip? Use this tool to build a completely new squad from scratch.
+            </p>
+            <OptimizationTools
+              allPlayers={allPlayers}
+              fixtures={fixtures}
+              teams={teams}
+              currentBudget={1000}
+            />
+          </div>
         </TabsContent>
 
         {/* --- CHIPS TAB --- */}

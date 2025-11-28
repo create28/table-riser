@@ -73,7 +73,12 @@ export function ChipStrategy({ chipSets, currentGameweek }: ChipStrategyProps) {
                                                         </Badge>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-xs text-muted-foreground">No recommendation yet</span>
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <span className="text-xs font-medium text-muted-foreground">Strategy</span>
+                                                        <Badge variant="secondary" className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                                            Hold
+                                                        </Badge>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
