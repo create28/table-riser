@@ -13,6 +13,8 @@ import { PlayerVsTeam } from '@/components/player-vs-team';
 import { PlayerVolatility } from '@/components/player-volatility';
 import { OptimizationTools } from '@/components/optimization-tools';
 
+import { UnderperformersList } from '@/components/underperformers-list';
+
 interface DashboardClientProps {
   players: Player[];
   allPlayers: Player[];
@@ -75,6 +77,14 @@ export function DashboardClient({
         teams={teams}
         fixtures={fixtures}
         squadPlayerIds={squadPlayerIds}
+        onPlayerClick={handlePlayerClick}
+        playerHistories={playerHistories}
+      />
+
+      <UnderperformersList
+        allPlayers={allPlayers}
+        teams={teams}
+        fixtures={fixtures}
         onPlayerClick={handlePlayerClick}
       />
 

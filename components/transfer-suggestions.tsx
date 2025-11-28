@@ -1,11 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { Separator } from '@/components/ui/separator';
+import { getTransferOutCandidates, getTransferInCandidates, TransferCandidate } from '@/lib/transfer-recommendation';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface TransferSuggestionsProps {
   currentPlayers: Player[];
@@ -14,191 +19,25 @@ interface TransferSuggestionsProps {
   fixtures: Fixture[];
   squadPlayerIds: Set<number>;
   onPlayerClick?: (player: Player) => void;
+  bank?: number;
+  playerHistories?: { [key: number]: any };
 }
 
-interface TransferCandidate {
-  player: Player;
-  reason: string[];
-  score: number;
-  fixtureScore: number;
-  formScore: number;
-  valueScore: number;
-}
+export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixtures, squadPlayerIds, onPlayerClick, bank = 0, playerHistories }: TransferSuggestionsProps) {
+  const [avoidRotationRisk, setAvoidRotationRisk] = useState(false);
 
-export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixtures, squadPlayerIds, onPlayerClick }: TransferSuggestionsProps) {
-  // Calculate transfer out candidates (players to remove)
-  const calculateTransferOutScore = (player: Player): TransferCandidate => {
-    const reasons: string[] = [];
-    let score = 0;
-
-    // Poor form
-    const form = parseFloat(player.form);
-    if (form < 3) {
-      reasons.push('Poor form (< 3.0)');
-      score += 30;
-    } else if (form < 4) {
-      reasons.push('Below average form');
-      score += 15;
-    }
-
-    // Poor value efficiency
-    const pointsPerMillion = player.total_points > 0 ? (player.total_points / (player.now_cost / 10)) : 0;
-    if (pointsPerMillion < 15) {
-      reasons.push('Poor value (< 15 pts/£m)');
-      score += 25;
-    } else if (pointsPerMillion < 20) {
-      reasons.push('Below average value');
-      score += 10;
-    }
-
-    // Low minutes
-    if (player.minutes < 300) {
-      reasons.push('Low playing time');
-      score += 20;
-    } else if (player.minutes < 500) {
-      reasons.push('Limited minutes');
-      score += 10;
-    }
-
-    // High transfer out pressure
-    const transferOutCoefficient = (player.transfers_out_event / 1000) * (1 + parseFloat(player.selected_by_percent) / 100);
-    if (transferOutCoefficient > 10) {
-      reasons.push('Mass exodus by managers');
-      score += 20;
-    }
-
-    // Difficult upcoming fixtures
-    const upcomingFixtures = fixtures
-      .filter(f => (f.team_h === player.team || f.team_a === player.team) && !f.finished)
-      .sort((a, b) => a.event - b.event)
-      .slice(0, 5);
-
-    const avgDifficulty = upcomingFixtures.reduce((sum, fixture) => {
-      const isHome = fixture.team_h === player.team;
-      return sum + (isHome ? fixture.team_h_difficulty : fixture.team_a_difficulty);
-    }, 0) / (upcomingFixtures.length || 1);
-
-    if (avgDifficulty >= 4) {
-      reasons.push('Very tough fixtures ahead');
-      score += 15;
-    } else if (avgDifficulty >= 3.5) {
-      reasons.push('Difficult fixtures');
-      score += 8;
-    }
-
-    return {
-      player,
-      reason: reasons,
-      score,
-      fixtureScore: avgDifficulty,
-      formScore: form,
-      valueScore: pointsPerMillion,
-    };
-  };
-
-  // Calculate transfer in candidates (players to bring in)
-  const calculateTransferInScore = (player: Player, position: number): TransferCandidate => {
-    const reasons: string[] = [];
-    let score = 0;
-
-    // Excellent form
-    const form = parseFloat(player.form);
-    if (form >= 6) {
-      reasons.push('Excellent form (6.0+)');
-      score += 30;
-    } else if (form >= 5) {
-      reasons.push('Great form');
-      score += 20;
-    } else if (form >= 4) {
-      reasons.push('Good form');
-      score += 10;
-    }
-
-    // Good value efficiency
-    const pointsPerMillion = player.total_points > 0 ? (player.total_points / (player.now_cost / 10)) : 0;
-    if (pointsPerMillion >= 30) {
-      reasons.push('Exceptional value (30+ pts/£m)');
-      score += 25;
-    } else if (pointsPerMillion >= 25) {
-      reasons.push('Great value');
-      score += 15;
-    } else if (pointsPerMillion >= 20) {
-      reasons.push('Good value');
-      score += 10;
-    }
-
-    // High minutes (consistent starter)
-    if (player.minutes >= 900) {
-      reasons.push('Regular starter');
-      score += 15;
-    } else if (player.minutes >= 600) {
-      reasons.push('Good playing time');
-      score += 8;
-    }
-
-    // High transfer in pressure (popular pick)
-    const transferInCoefficient = (player.transfers_in_event / 1000) * (1 + parseFloat(player.selected_by_percent) / 100);
-    if (transferInCoefficient > 15) {
-      reasons.push('Extremely popular transfer');
-      score += 15;
-    } else if (transferInCoefficient > 8) {
-      reasons.push('Popular transfer target');
-      score += 10;
-    }
-
-    // Easy upcoming fixtures
-    const upcomingFixtures = fixtures
-      .filter(f => (f.team_h === player.team || f.team_a === player.team) && !f.finished)
-      .sort((a, b) => a.event - b.event)
-      .slice(0, 5);
-
-    const avgDifficulty = upcomingFixtures.reduce((sum, fixture) => {
-      const isHome = fixture.team_h === player.team;
-      return sum + (isHome ? fixture.team_h_difficulty : fixture.team_a_difficulty);
-    }, 0) / (upcomingFixtures.length || 1);
-
-    if (avgDifficulty <= 2.5) {
-      reasons.push('Very favorable fixtures');
-      score += 20;
-    } else if (avgDifficulty <= 3) {
-      reasons.push('Good fixture run');
-      score += 12;
-    }
-
-    // Points per game
-    const ppg = parseFloat(player.points_per_game);
-    if (ppg >= 6) {
-      reasons.push('Elite PPG (6.0+)');
-      score += 15;
-    } else if (ppg >= 5) {
-      reasons.push('Strong PPG');
-      score += 10;
-    }
-
-    return {
-      player,
-      reason: reasons,
-      score,
-      fixtureScore: avgDifficulty,
-      formScore: form,
-      valueScore: pointsPerMillion,
-    };
-  };
+  // Get candidates using unified logic
+  const transferOutCandidates = getTransferOutCandidates(currentPlayers, fixtures)
+    .filter(c => c.score > 0)
+    .slice(0, 5);
 
   // Get players not in current squad
   const currentPlayerIds = currentPlayers.map(p => p.id);
   const availablePlayers = allPlayers.filter(p => !currentPlayerIds.includes(p.id));
 
-  // Calculate scores for transfer out
-  const transferOutCandidates = currentPlayers
-    .map(calculateTransferOutScore)
-    .filter(c => c.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
   // Calculate scores for transfer in by position
   const getPositionName = (elementType: number) => {
-    switch(elementType) {
+    switch (elementType) {
       case 1: return 'GKP';
       case 2: return 'DEF';
       case 3: return 'MID';
@@ -207,13 +46,20 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
     }
   };
 
+  // We assume a generic budget for suggestions if we don't know who is being sold
+  // Or we could just show top players. Let's use a high budget to show best options generally,
+  // but ideally this would be dynamic. For now, let's assume we can afford most players (100m budget cap effectively)
+  // In a real app, we might want to select a player to sell first.
   const transferInByPosition: { [key: number]: TransferCandidate[] } = {};
   [1, 2, 3, 4].forEach(position => {
-    transferInByPosition[position] = availablePlayers
-      .filter(p => p.element_type === position && p.minutes >= 300) // Only consider players with decent minutes
-      .map(p => calculateTransferInScore(p, position))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+    transferInByPosition[position] = getTransferInCandidates(
+      availablePlayers,
+      fixtures,
+      position,
+      2000, // 2000 = 200.0m, effectively unlimited
+      playerHistories,
+      avoidRotationRisk
+    ).slice(0, 5);
   });
 
   const getScoreBadgeColor = (score: number) => {
@@ -221,6 +67,12 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
     if (score >= 30) return 'bg-orange-500 hover:bg-orange-600';
     if (score >= 15) return 'bg-yellow-500 hover:bg-yellow-600';
     return 'bg-green-500 hover:bg-green-600';
+  };
+
+  const getInScoreBadgeColor = (score: number) => {
+    if (score >= 40) return 'bg-green-600 hover:bg-green-700';
+    if (score >= 30) return 'bg-green-500 hover:bg-green-600';
+    return 'bg-blue-500 hover:bg-blue-600';
   };
 
   const getTeamName = (teamId: number) => {
@@ -238,8 +90,24 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Transfer Suggestions</CardTitle>
-        <CardDescription>AI-powered recommendations based on form, fixtures, and value</CardDescription>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <CardTitle>Transfer Suggestions</CardTitle>
+            <CardDescription>
+              AI-powered recommendations based on Form, Fixtures, Value, xG/xA, and Trends.
+            </CardDescription>
+          </div>
+          <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg">
+            <Switch
+              id="rotation-risk"
+              checked={avoidRotationRisk}
+              onCheckedChange={setAvoidRotationRisk}
+            />
+            <Label htmlFor="rotation-risk" className="cursor-pointer">
+              Avoid Rotation Risk
+            </Label>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="out" className="w-full">
@@ -268,12 +136,12 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                     <TableHead className="text-right">Form</TableHead>
                     <TableHead className="text-right">Pts/£m</TableHead>
                     <TableHead>Issues</TableHead>
-                    <TableHead className="text-right">Priority</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
                   </TableRow>
                 </TableHeader>
-              <TableBody>
-                {transferOutCandidates.map(({ player, reason, score, formScore, valueScore }) => (
-                  <TableRow key={player.id} className={getRowClassName(player.id)}>
+                <TableBody>
+                  {transferOutCandidates.map(({ player, reasons, score, breakdown }) => (
+                    <TableRow key={player.id} className={getRowClassName(player.id)}>
                       <TableCell className="font-medium">
                         <button
                           onClick={() => onPlayerClick?.(player)}
@@ -283,19 +151,36 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                         </button>
                       </TableCell>
                       <TableCell>{getTeamName(player.team)}</TableCell>
-                      <TableCell className="text-right">{formScore.toFixed(1)}</TableCell>
-                      <TableCell className="text-right">{valueScore.toFixed(1)}</TableCell>
+                      <TableCell className="text-right">{player.form}</TableCell>
+                      <TableCell className="text-right">{(player.total_points / (player.now_cost / 10)).toFixed(1)}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          {reason.map((r, idx) => (
+                          {reasons.map((r, idx) => (
                             <div key={idx} className="text-xs text-muted-foreground">• {r}</div>
                           ))}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Badge className={`${getScoreBadgeColor(score)} text-white`}>
-                          {score >= 50 ? 'Urgent' : score >= 30 ? 'High' : score >= 15 ? 'Medium' : 'Low'}
-                        </Badge>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Badge className={`${getScoreBadgeColor(score)} text-white cursor-help`}>
+                                {score}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="text-xs space-y-1">
+                                <p className="font-semibold border-b pb-1 mb-1">Score Breakdown</p>
+                                <div className="grid grid-cols-2 gap-x-4">
+                                  <span>Form:</span> <span>{breakdown.form}</span>
+                                  <span>Fixtures:</span> <span>{breakdown.fixtures}</span>
+                                  <span>Value:</span> <span>{breakdown.value}</span>
+                                  <span>Trends:</span> <span>{breakdown.trends}</span>
+                                </div>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -327,13 +212,13 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                         <TableHead>Team</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                         <TableHead className="text-right">Form</TableHead>
-                        <TableHead className="text-right">Pts/£m</TableHead>
+                        <TableHead className="text-right">xGI</TableHead>
                         <TableHead>Strengths</TableHead>
                         <TableHead className="text-right">Score</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {candidates.map(({ player, reason, score, formScore, valueScore }) => (
+                      {candidates.map(({ player, reasons, score, breakdown }) => (
                         <TableRow key={player.id} className={getRowClassName(player.id)}>
                           <TableCell className="font-medium">
                             <button
@@ -345,19 +230,37 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                           </TableCell>
                           <TableCell>{getTeamName(player.team)}</TableCell>
                           <TableCell className="text-right">£{(player.now_cost / 10).toFixed(1)}m</TableCell>
-                          <TableCell className="text-right">{formScore.toFixed(1)}</TableCell>
-                          <TableCell className="text-right">{valueScore.toFixed(1)}</TableCell>
+                          <TableCell className="text-right">{player.form}</TableCell>
+                          <TableCell className="text-right">{player.expected_goal_involvements ? parseFloat(player.expected_goal_involvements).toFixed(2) : '-'}</TableCell>
                           <TableCell>
                             <div className="space-y-1">
-                              {reason.slice(0, 3).map((r, idx) => (
+                              {reasons.slice(0, 3).map((r, idx) => (
                                 <div key={idx} className="text-xs text-muted-foreground">• {r}</div>
                               ))}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Badge className="bg-green-500 hover:bg-green-600 text-white">
-                              {score}
-                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Badge className={`${getInScoreBadgeColor(score)} text-white cursor-help`}>
+                                    {score}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="text-xs space-y-1">
+                                    <p className="font-semibold border-b pb-1 mb-1">Score Breakdown</p>
+                                    <div className="grid grid-cols-2 gap-x-4">
+                                      <span>Form:</span> <span>{breakdown.form}</span>
+                                      <span>Fixtures:</span> <span>{breakdown.fixtures}</span>
+                                      <span>Value:</span> <span>{breakdown.value}</span>
+                                      <span>xG/xA:</span> <span>{breakdown.xg}</span>
+                                      <span>Trends:</span> <span>{breakdown.trends}</span>
+                                    </div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                         </TableRow>
                       ))}
