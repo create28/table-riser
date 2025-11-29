@@ -386,11 +386,12 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
 
           {/* Performance Analysis Tab */}
           <TabsContent value="performance" className="mt-4">
-            <div className="p-6 border rounded-lg">
-              <p className="text-sm text-muted-foreground text-center">
-                Performance analysis temporarily disabled for debugging
-              </p>
-            </div>
+            <PlayerPerformanceAnalysis
+              player={player}
+              playerHistory={playerHistory}
+              fixtures={fixtures}
+              teams={teams}
+            />
           </TabsContent>
 
           {/* Detailed Stats Tab */}

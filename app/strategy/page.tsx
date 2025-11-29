@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
-import { 
-  fetchBootstrapStatic, 
-  fetchFixtures, 
+import {
+  fetchBootstrapStatic,
+  fetchFixtures,
   fetchManagerTeam,
   fetchManagerInfo,
   fetchPlayerHistory,
@@ -27,7 +27,7 @@ async function getStrategyData(teamId: number) {
     ]);
 
     const currentGameweek = bootstrapData.events.find(e => e.is_current)?.id || 1;
-    
+
     // Fetch manager team after we know the current gameweek
     const managerTeam = await fetchManagerTeam(teamId, currentGameweek);
     const nextGameweeks = bootstrapData.events.filter(
@@ -38,7 +38,7 @@ async function getStrategyData(teamId: number) {
     const squadPlayerIds = new Set(managerTeam.picks.map(p => p.element));
 
     // Get full player objects for squad
-    const squadPlayers = bootstrapData.elements.filter(p => 
+    const squadPlayers = bootstrapData.elements.filter(p =>
       squadPlayerIds.has(p.id)
     );
 
@@ -49,7 +49,7 @@ async function getStrategyData(teamId: number) {
 
     // Fetch player histories for all potential transfer targets
     // Filter: players with playing time who could be transfer targets
-    const potentialTransferTargets = bootstrapData.elements.filter(p => 
+    const potentialTransferTargets = bootstrapData.elements.filter(p =>
       p.minutes > 100 && // Has played
       p.chance_of_playing_next_round !== 0 // Not injured
     );
@@ -63,11 +63,11 @@ async function getStrategyData(teamId: number) {
     console.log(`Fetching histories for ${playersToAnalyze.size} players...`);
 
     const playerHistories: { [key: number]: any } = {};
-    
+
     // Fetch in batches to avoid overwhelming the API
     const playerIdArray = Array.from(playersToAnalyze);
     const batchSize = 20;
-    
+
     for (let i = 0; i < playerIdArray.length; i += batchSize) {
       const batch = playerIdArray.slice(i, i + batchSize);
       await Promise.all(
@@ -132,7 +132,7 @@ export default async function StrategyPage({
         {/* Header */}
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Link 
+            <Link
               href={`/?teamId=${teamId}`}
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
@@ -164,9 +164,10 @@ export default async function StrategyPage({
               managerTeam={data.managerTeam}
               managerInfo={data.managerInfo}
             />
-            <StrategyPlayerModal 
+            <StrategyPlayerModal
               teams={data.teams}
               playerHistories={data.playerHistories}
+              fixtures={data.fixtures}
             />
           </PlayerDetailProvider>
         </Suspense>

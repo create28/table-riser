@@ -2,14 +2,15 @@
 
 import { usePlayerDetail } from '@/components/player-detail-provider';
 import { PlayerDetailModal } from '@/components/player-detail-modal';
-import { Team } from '@/lib/fpl-api';
+import { Team, Fixture } from '@/lib/fpl-api';
 
 interface StrategyPlayerModalProps {
   teams: Team[];
   playerHistories: { [key: number]: any };
+  fixtures: Fixture[];
 }
 
-export function StrategyPlayerModal({ teams, playerHistories }: StrategyPlayerModalProps) {
+export function StrategyPlayerModal({ teams, playerHistories, fixtures }: StrategyPlayerModalProps) {
   const { selectedPlayer, closePlayerDetail } = usePlayerDetail();
 
   if (!selectedPlayer) return null;
@@ -24,6 +25,8 @@ export function StrategyPlayerModal({ teams, playerHistories }: StrategyPlayerMo
       playerHistory={playerHistory}
       isOpen={!!selectedPlayer}
       onClose={closePlayerDetail}
+      fixtures={fixtures}
+      teams={teams}
     />
   );
 }
