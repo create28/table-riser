@@ -59,6 +59,12 @@ export function DashboardWrapper({ initialTeamId, children, managerInfo, entryHi
                         Strategy
                       </Button>
                     </Link>
+                    <Link href="/training">
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <span className="text-lg">🧠</span>
+                        Training
+                      </Button>
+                    </Link>
                   </div>
                 </div>
 
