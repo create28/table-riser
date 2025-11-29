@@ -11,12 +11,20 @@ const DEFAULT_TEAM_ID = 3992229;
 
 async function getDashboardData(teamId: number) {
   try {
-    // Fetch all data in parallel
-    const [bootstrapData, fixtures, scoutReports] = await Promise.all([
+    // Fetch critical data in parallel
+    const [bootstrapData, fixtures] = await Promise.all([
       fetchBootstrapStatic(),
       fetchFixtures(),
-      fetchScoutReports(),
     ]);
+
+    // Fetch scout reports separately to prevent blocking critical data
+    let scoutReports: any[] = [];
+    try {
+      scoutReports = await fetchScoutReports();
+    } catch (error) {
+      console.error('Failed to fetch scout reports:', error);
+      // Fallback to empty array
+    }
 
     // Analyze reports for player mentions
     let playerMentions: any[] = [];
