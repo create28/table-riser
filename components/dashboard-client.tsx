@@ -123,10 +123,88 @@ export function DashboardClient({
           {reportsTabContent}
         </TabsContent>
 
-        {/* ... (Other Tabs) */}
+        {/* --- TRANSFERS TAB --- */}
+        <TabsContent value="transfers" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="md:col-span-1">
+              <TransferCoefficient players={players} onPlayerClick={handlePlayerClick} />
+            </div>
+            <div className="md:col-span-2">
+              <TransferSuggestions
+                currentPlayers={players}
+                allPlayers={allPlayers}
+                teams={teams}
+                fixtures={fixtures}
+                squadPlayerIds={squadPlayerIds}
+                onPlayerClick={handlePlayerClick}
+                playerHistories={playerHistories}
+              />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* --- BEST LINEUP TAB --- */}
+        <TabsContent value="lineup" className="space-y-8">
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Next Gameweek Optimizer</h3>
+            <BestLineup
+              squadPlayers={players}
+              allPlayers={allPlayers}
+              fixtures={fixtures}
+              teams={teams}
+            />
+          </div>
+
+          <div className="pt-8 border-t">
+            <h3 className="text-lg font-semibold mb-4">Wildcard / Free Hit Planner</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Planning a chip? Use this tool to build a completely new squad from scratch.
+            </p>
+            <OptimizationTools
+              allPlayers={allPlayers}
+              fixtures={fixtures}
+              teams={teams}
+              currentBudget={1000}
+            />
+          </div>
+        </TabsContent>
+
+        {/* --- CHIPS TAB --- */}
+        <TabsContent value="chips" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Chip Strategy (2025/26)</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Strategic recommendations for your chips based on the new two-set rule.
+              </p>
+              <ChipStrategy chipSets={chipSets} currentGameweek={currentGameweek} />
+            </div>
+            <div>
+              {/* Placeholder for Chip Optimizer or more detailed analysis */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Chip Optimizer</CardTitle>
+                  <CardDescription>Advanced simulation for chip usage</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Coming soon: Detailed Monte Carlo simulations to determine the exact expected points gain for each chip in upcoming gameweeks.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
-      {/* ... (Modal) */}
+      {/* Player Detail Modal */}
+      <PlayerDetailModal
+        player={selectedPlayer}
+        team={selectedTeam}
+        playerHistory={selectedPlayer ? playerHistories[selectedPlayer.id] : null}
+        isOpen={!!selectedPlayer}
+        onClose={closePlayerDetail}
+      />
     </>
   );
 }
