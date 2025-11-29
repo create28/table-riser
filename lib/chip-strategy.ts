@@ -182,7 +182,13 @@ function analyzeChip(
         if (urgency === 'high') {
             recommendedGw = currentGw; // Use now if running out of time
         } else {
-            reason = "Save for major team restructure or fixture swing";
+            // Heuristic: Late season wildcard usually around GW30-35
+            const estimatedGw = currentGw < 30 ? 30 : 35;
+            if (weeksRemaining > 5) {
+                reason = `Hold for fixture swing or DGW preparation (Est. GW${estimatedGw})`;
+            } else {
+                reason = "Save for major team restructure or fixture swing";
+            }
         }
     } else if (apiName === '3xc') {
         // Recommend on DGW
@@ -192,7 +198,9 @@ function analyzeChip(
             reason = `Target Double Gameweek ${dgw}`;
             if (dgw - currentGw <= 2) urgency = 'high';
         } else {
-            reason = "Save for a Double Gameweek";
+            // Heuristic: Big DGWs usually GW34, GW37
+            const estimatedGw = currentGw < 34 ? 34 : 37;
+            reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
         }
     } else if (apiName === 'bboost') {
         // Recommend on DGW
@@ -201,7 +209,9 @@ function analyzeChip(
             recommendedGw = dgw;
             reason = `Target Double Gameweek ${dgw} with strong bench`;
         } else {
-            reason = "Save for a Double Gameweek";
+            // Heuristic: Big DGWs usually GW34, GW37
+            const estimatedGw = currentGw < 34 ? 34 : 37;
+            reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
         }
     } else if (apiName === 'freehit') {
         // Recommend on BGW (Blank Gameweek)
@@ -216,7 +226,9 @@ function analyzeChip(
             if (dgw) {
                 reason = `Consider for Double Gameweek ${dgw}`;
             } else {
-                reason = "Hold for a Blank or Double Gameweek later in the season";
+                // Heuristic: Big BGW usually GW29, DGWs GW34/37
+                const estimatedGw = currentGw < 29 ? 29 : (currentGw < 34 ? 34 : 37);
+                reason = `Hold for a Blank or Double Gameweek (Likely GW${estimatedGw})`;
             }
         }
     }

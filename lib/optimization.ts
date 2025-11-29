@@ -317,12 +317,21 @@ export function optimizeTeam(
             const candidates = allPlayers
                 .filter(p => p.element_type === type && !settings.excludePlayers.includes(p.id))
                 .sort((a, b) => {
+                    // Primary Sort: Cost ASC
                     if (a.now_cost !== b.now_cost) return a.now_cost - b.now_cost;
-                    return b.minutes - a.minutes; // Prefer playing fodder if cost is same
+                    // Secondary Sort: Minutes DESC
+                    return b.minutes - a.minutes;
                 });
 
+            // Filter for "playing fodder" (PPG >= 2)
+            // If we can't find any cheap players with decent PPG, we fallback to just cheapest
+            const playingCandidates = candidates.filter(p => parseFloat(p.points_per_game) >= 2.0);
+
+            // Use playing candidates if available, otherwise fallback to any candidate
+            const finalCandidates = playingCandidates.length > 0 ? playingCandidates : candidates;
+
             // Find first valid candidate
-            for (const candidate of candidates) {
+            for (const candidate of finalCandidates) {
                 // We need to convert to PlayerWithXP structure (even with 0 xP is fine for fodder)
                 const candidateWithXP = playersWithXP.find(p => p.id === candidate.id) || {
                     ...candidate,
