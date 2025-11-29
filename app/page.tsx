@@ -1,19 +1,21 @@
 import { Suspense } from 'react';
 import { fetchBootstrapStatic, fetchManagerTeam, fetchManagerInfo, getCurrentGameweek, fetchPlayerHistory } from '@/lib/fpl-api';
 import { DashboardClient } from '@/components/dashboard-client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { fetchFixtures } from '@/lib/fpl-api';
 import { DashboardWrapper } from '@/components/dashboard-wrapper';
+import { fetchScoutReports } from '@/lib/rss';
 
 const DEFAULT_TEAM_ID = 3992229;
 
 async function getDashboardData(teamId: number) {
   try {
     // Fetch all data in parallel
-    const [bootstrapData, fixtures] = await Promise.all([
+    const [bootstrapData, fixtures, scoutReports] = await Promise.all([
       fetchBootstrapStatic(),
       fetchFixtures(),
+      fetchScoutReports(),
     ]);
 
     const currentGameweek = getCurrentGameweek(bootstrapData.events);
@@ -91,6 +93,7 @@ async function getDashboardData(teamId: number) {
       entryHistory: managerTeam.entry_history,
       playerHistories,
       squadPlayerIds: playerIdsSet, // For visual distinction
+      scoutReports,
     };
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -139,6 +142,7 @@ export default async function Home({
           playerTeams={data.playerTeams}
           playerHistories={data.playerHistories}
           squadPlayerIds={data.squadPlayerIds}
+          scoutReports={data.scoutReports}
         />
       </Suspense>
 

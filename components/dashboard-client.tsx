@@ -19,6 +19,8 @@ import { ChipStrategy } from '@/components/chip-strategy';
 import { getChipStrategy } from '@/lib/chip-strategy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BestLineup } from '@/components/best-lineup';
+import { ScoutReports } from '@/components/scout-reports';
+import { ScoutReportItem } from '@/lib/rss';
 
 interface DashboardClientProps {
   players: Player[];
@@ -28,6 +30,7 @@ interface DashboardClientProps {
   playerTeams: number[];
   playerHistories: { [key: number]: any };
   squadPlayerIds: Set<number>;
+  scoutReports: ScoutReportItem[];
 }
 
 export function DashboardClient({
@@ -38,6 +41,7 @@ export function DashboardClient({
   playerTeams,
   playerHistories,
   squadPlayerIds,
+  scoutReports,
 }: DashboardClientProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
@@ -60,9 +64,10 @@ export function DashboardClient({
   return (
     <>
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="scout">Scout</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="transfers">Transfers</TabsTrigger>
           <TabsTrigger value="lineup">Best Lineup</TabsTrigger>
           <TabsTrigger value="chips">Chips</TabsTrigger>
@@ -112,6 +117,11 @@ export function DashboardClient({
               onPlayerClick={handlePlayerClick}
             />
           </div>
+        </TabsContent>
+
+        {/* --- REPORTS TAB --- */}
+        <TabsContent value="reports" className="space-y-4">
+          <ScoutReports reports={scoutReports} />
         </TabsContent>
 
         {/* --- TRANSFERS TAB --- */}
@@ -199,4 +209,3 @@ export function DashboardClient({
     </>
   );
 }
-
