@@ -66,6 +66,10 @@ export interface PlayerMention {
     context: string[];
 }
 
+function escapeRegExp(string: string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+
 export function analyzeScoutReports(reports: ScoutReportItem[], allPlayers: any[]): PlayerMention[] {
     const mentionsMap = new Map<number, PlayerMention>();
 
@@ -89,7 +93,8 @@ export function analyzeScoutReports(reports: ScoutReportItem[], allPlayers: any[
             if (name.length < 4 && !['son', 'mee', 'ali'].includes(name)) return;
             // Skip "Best", "White", "Rice", "Young", "Long" if we want to be safe, but let's try regex word boundary
 
-            const regex = new RegExp(`\\b${name}\\b`, 'g');
+            const escapedName = escapeRegExp(name);
+            const regex = new RegExp(`\\b${escapedName}\\b`, 'g');
             const matches = text.match(regex);
 
             if (matches && matches.length > 0) {

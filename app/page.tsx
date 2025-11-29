@@ -19,7 +19,13 @@ async function getDashboardData(teamId: number) {
     ]);
 
     // Analyze reports for player mentions
-    const playerMentions = analyzeScoutReports(scoutReports, bootstrapData.elements);
+    let playerMentions: any[] = [];
+    try {
+      playerMentions = analyzeScoutReports(scoutReports, bootstrapData.elements);
+    } catch (error) {
+      console.error('Error analyzing scout reports:', error);
+      // Continue without mentions if analysis fails
+    }
 
     const currentGameweek = getCurrentGameweek(bootstrapData.events);
 
