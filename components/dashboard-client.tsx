@@ -56,8 +56,8 @@ export function DashboardClient({
   // Calculate current gameweek (approximate based on fixtures)
   const currentGameweek = fixtures.find(f => !f.finished)?.event || 38;
 
-  // Chip Strategy Data (Mock data for now as we don't have user chip history)
-  const chipSets = getChipStrategy(currentGameweek, [], fixtures);
+  // Chip Strategy Data with intelligent analysis
+  const chipSets = getChipStrategy(currentGameweek, [], fixtures, allPlayers, teams);
 
   const selectedTeam = selectedPlayer ? (teams.find(t => t.id === selectedPlayer.team) || null) : null;
 
