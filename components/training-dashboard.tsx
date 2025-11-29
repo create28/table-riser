@@ -9,14 +9,16 @@ import { Play, RotateCcw, Brain, Database } from 'lucide-react';
 import { LearningEngine, AlgorithmWeights } from '@/lib/ml-learning-engine';
 import { TransferTracker, TransferOutcome } from '@/lib/ml-transfer-tracker';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
+import { runSimulation, SimulationScenario } from '@/lib/simulation-utils';
 
 interface TrainingDashboardProps {
     allPlayers: Player[];
     teams: Team[];
     fixtures: Fixture[];
+    playerHistories: { [key: number]: any };
 }
 
-export function TrainingDashboard({ allPlayers, teams, fixtures }: TrainingDashboardProps) {
+export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories }: TrainingDashboardProps) {
     const [weights, setWeights] = useState<AlgorithmWeights | null>(null);
     const [outcomes, setOutcomes] = useState<TransferOutcome[]>([]);
     const [isTraining, setIsTraining] = useState(false);
@@ -28,43 +30,87 @@ export function TrainingDashboard({ allPlayers, teams, fixtures }: TrainingDashb
         setOutcomes(TransferTracker.getOutcomes());
     }, []);
 
-    const runSimulation = async () => {
+    const runSimulationBatch = async () => {
         setIsTraining(true);
-        setLogs(prev => ['Starting simulation...', ...prev]);
+        setLogs(prev => ['Starting real simulation...', ...prev]);
 
-        // Simulate a delay for "processing"
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Simulate a delay for UI feedback
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-        // 1. Generate random scenarios (mock for now)
-        // In a real app, we'd pick random players, find transfers, and check their next 3 GW points
-        // Since we can't easily "check future points" without a full historical database,
-        // we will simulate the "outcome" based on a heuristic for demonstration.
+        const currentWeights = weights || LearningEngine.getCurrentWeights();
+        const newOutcomes: TransferOutcome[] = [];
+        const scenariosCount = 5;
 
-        const mockOutcomes = [];
-        for (let i = 0; i < 5; i++) {
-            const isSuccess = Math.random() > 0.4; // 60% success rate base
-            const points = isSuccess ? Math.floor(Math.random() * 15) + 1 : Math.floor(Math.random() * -5) - 1;
+        // Determine valid gameweek range for simulation
+        let maxGw = 1;
+        Object.values(playerHistories).forEach((h: any) => {
+            if (h.history && h.history.length > 0) {
+                const last = h.history[h.history.length - 1].round;
+                if (last > maxGw) maxGw = last;
+            }
+        });
 
-            const outcome = TransferTracker.recordOutcome({
-                decisionId: `sim-${Date.now()}-${i}`,
-                actualPointsGained: points,
-                weeksEvaluated: 3,
-                successScore: isSuccess ? 80 : 20
-            });
+        const minStartGw = 4;
+        const maxStartGw = Math.max(minStartGw, maxGw - 3);
 
-            if (outcome) mockOutcomes.push(outcome);
+        for (let i = 0; i < scenariosCount; i++) {
+            // 1. Pick random GW
+            const gameweek = Math.floor(Math.random() * (maxStartGw - minStartGw + 1)) + minStartGw;
+
+            // 2. Pick random team (15 players)
+            const availablePlayerIds = Object.keys(playerHistories).map(Number);
+            if (availablePlayerIds.length < 20) {
+                setLogs(prev => ['Error: Not enough player history data', ...prev]);
+                break;
+            }
+
+            // Shuffle and pick 15
+            const shuffled = availablePlayerIds.sort(() => 0.5 - Math.random());
+            const teamIds = shuffled.slice(0, 15);
+            const marketIds = shuffled.slice(15); // The rest are market
+
+            const team = allPlayers.filter(p => teamIds.includes(p.id));
+            const market = allPlayers.filter(p => marketIds.includes(p.id));
+
+            const scenario: SimulationScenario = {
+                gameweek,
+                team,
+                market,
+                budget: 1000 // ample budget for simplicity
+            };
+
+            // 3. Run Simulation
+            const result = runSimulation(scenario, currentWeights, playerHistories, fixtures);
+
+            if (result.transferIn && result.transferOut) {
+                const outcome = TransferTracker.recordOutcome({
+                    decisionId: `sim-${Date.now()}-${i}`,
+                    actualPointsGained: result.pointsDiff,
+                    weeksEvaluated: 3,
+                    successScore: result.success ? 100 : 0
+                });
+
+                if (outcome) {
+                    newOutcomes.push(outcome);
+                    setLogs(prev => [`[GW${gameweek}] Swapped ${result.transferOut?.web_name} -> ${result.transferIn?.web_name}. Diff: ${result.pointsDiff} pts`, ...prev]);
+                }
+            } else {
+                setLogs(prev => [`[GW${gameweek}] No suitable transfer found`, ...prev]);
+            }
         }
 
-        setLogs(prev => [`Simulated ${mockOutcomes.length} transfer scenarios`, ...prev]);
+        setLogs(prev => [`Completed ${newOutcomes.length} simulations`, ...prev]);
 
-        // 2. Train model
-        const result = LearningEngine.trainModel();
-        setWeights(result.newWeights);
-        setOutcomes(TransferTracker.getOutcomes());
+        // 4. Train model
+        if (newOutcomes.length > 0) {
+            const result = LearningEngine.trainModel();
+            setWeights(result.newWeights);
+            setOutcomes(TransferTracker.getOutcomes());
 
-        result.improvements.forEach(imp => {
-            setLogs(prev => [`[LEARNING] ${imp}`, ...prev]);
-        });
+            result.improvements.forEach(imp => {
+                setLogs(prev => [`[LEARNING] ${imp}`, ...prev]);
+            });
+        }
 
         setIsTraining(false);
     };
@@ -140,7 +186,7 @@ export function TrainingDashboard({ allPlayers, teams, fixtures }: TrainingDashb
 
                         <Button
                             className="w-full"
-                            onClick={runSimulation}
+                            onClick={runSimulationBatch}
                             disabled={isTraining}
                         >
                             {isTraining ? 'Training...' : (

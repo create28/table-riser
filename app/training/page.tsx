@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import {
     fetchBootstrapStatic,
     fetchFixtures,
+    fetchPlayerHistory,
+    Player
 } from '@/lib/fpl-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrainingDashboard } from '@/components/training-dashboard';
@@ -15,10 +17,34 @@ async function getTrainingData() {
             fetchFixtures(),
         ]);
 
+        // Fetch history for top 50 players by points (for simulation market)
+        const topPlayers = [...bootstrapData.elements]
+            .sort((a, b) => b.total_points - a.total_points)
+            .slice(0, 50);
+
+        const playerHistories: { [key: number]: any } = {};
+
+        // Fetch in parallel batches
+        const batchSize = 10;
+        for (let i = 0; i < topPlayers.length; i += batchSize) {
+            const batch = topPlayers.slice(i, i + batchSize);
+            await Promise.all(
+                batch.map(async (p) => {
+                    try {
+                        const history = await fetchPlayerHistory(p.id);
+                        playerHistories[p.id] = history;
+                    } catch (e) {
+                        console.error(`Failed to fetch history for ${p.web_name}`, e);
+                    }
+                })
+            );
+        }
+
         return {
             teams: bootstrapData.teams,
             allPlayers: bootstrapData.elements,
             fixtures,
+            playerHistories
         };
     } catch (error) {
         console.error('Error fetching training data:', error);
@@ -46,6 +72,7 @@ export default async function TrainingPage() {
                     allPlayers={data.allPlayers}
                     teams={data.teams}
                     fixtures={data.fixtures}
+                    playerHistories={data.playerHistories}
                 />
             </Suspense>
         </div>
