@@ -204,6 +204,8 @@ export function DashboardClient({
         playerHistory={selectedPlayer ? playerHistories[selectedPlayer.id] : null}
         isOpen={!!selectedPlayer}
         onClose={closePlayerDetail}
+        fixtures={fixtures}
+        teams={teams}
       />
     </>
   );

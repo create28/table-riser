@@ -1,10 +1,12 @@
 'use client';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Player, Team } from '@/lib/fpl-api';
+import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PlayerPerformanceAnalysis } from '@/components/player-performance-analysis';
 
 interface PlayerDetailModalProps {
   player: Player | null;
@@ -12,9 +14,11 @@ interface PlayerDetailModalProps {
   playerHistory: any;
   isOpen: boolean;
   onClose: () => void;
+  fixtures?: Fixture[];
+  teams?: Team[];
 }
 
-export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose }: PlayerDetailModalProps) {
+export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose, fixtures = [], teams = [] }: PlayerDetailModalProps) {
   if (!player) return null;
 
   const history = playerHistory?.history || [];
@@ -150,226 +154,311 @@ export function PlayerDetailModal({ player, team, playerHistory, isOpen, onClose
 
         <Separator />
 
-        {/* Last 5 Games Form */}
-        {last5Games.length > 0 && (
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold">Last 5 Games Form</h3>
-              <p className="text-sm text-muted-foreground">
-                Average: {last5Avg.toFixed(1)} pts/game
-              </p>
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={last5Games}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="gameweek" style={{ fontSize: '12px' }} />
-                <YAxis style={{ fontSize: '12px' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--popover)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px'
-                  }}
-                />
-                <Bar dataKey="points" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        {/* Tabs for different views */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="performance">Performance Analysis</TabsTrigger>
+            <TabsTrigger value="stats">Detailed Stats</TabsTrigger>
+          </TabsList>
 
-        <Separator />
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-4 mt-4">
+            {/* Last 5 Games Form */}
+            {last5Games.length > 0 && (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Last 5 Games Form</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Average: {last5Avg.toFixed(1)} pts/game
+                  </p>
+                </div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={last5Games}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="gameweek" style={{ fontSize: '12px' }} />
+                    <YAxis style={{ fontSize: '12px' }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--popover)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Bar dataKey="points" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
-        {/* Full Season Points Chart */}
-        {gameweekData.length > 0 && (
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold">Season Points Per Gameweek</h3>
-              <p className="text-sm text-muted-foreground">
-                {totalGames} games | {avgPoints.toFixed(1)} avg | {highestScore} highest | {blanks} blanks
-              </p>
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={gameweekData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis
-                  dataKey="gameweek"
-                  style={{ fontSize: '10px' }}
-                  interval={gameweekData.length > 15 ? 1 : 0}
-                />
-                <YAxis style={{ fontSize: '12px' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--popover)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px'
-                  }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-popover p-3 border rounded-lg shadow-lg">
-                          <p className="font-semibold mb-2">{data.gameweek}</p>
-                          <div className="space-y-1 text-xs">
-                            <p><strong>Points:</strong> {data.points}</p>
-                            <p><strong>Minutes:</strong> {data.minutes}</p>
-                            {data.goals > 0 && <p><strong>Goals:</strong> {data.goals}</p>}
-                            {data.assists > 0 && <p><strong>Assists:</strong> {data.assists}</p>}
-                            {data.bonus > 0 && <p><strong>Bonus:</strong> {data.bonus}</p>}
-                            {data.cleanSheet > 0 && <p><strong>Clean Sheet:</strong> ✓</p>}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="points"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  dot={{ fill: '#f59e0b', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+            <Separator />
 
-        {/* Attacking Stats */}
-        <Separator />
-        <div>
-          <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">⚽ Attacking Stats</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground text-xs">Goals</p>
-              <p className="font-semibold text-lg">{player.goals_scored}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Assists</p>
-              <p className="font-semibold text-lg">{player.assists}</p>
-            </div>
-            {player.expected_goals && parseFloat(player.expected_goals) > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">xG (Expected Goals)</p>
-                <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goals).toFixed(2)}</p>
+            {/* Full Season Points Chart */}
+            {gameweekData.length > 0 && (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Season Points Per Gameweek</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {totalGames} games | {avgPoints.toFixed(1)} avg | {highestScore} highest | {blanks} blanks
+                  </p>
+                </div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={gameweekData}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis
+                      dataKey="gameweek"
+                      style={{ fontSize: '10px' }}
+                      interval={gameweekData.length > 15 ? 1 : 0}
+                    />
+                    <YAxis style={{ fontSize: '12px' }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--popover)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px'
+                      }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-popover p-3 border rounded-lg shadow-lg">
+                              <p className="font-semibold mb-2">{data.gameweek}</p>
+                              <div className="space-y-1 text-xs">
+                                <p><strong>Points:</strong> {data.points}</p>
+                                <p><strong>Minutes:</strong> {data.minutes}</p>
+                                {data.goals > 0 && <p><strong>Goals:</strong> {data.goals}</p>}
+                                {data.assists > 0 && <p><strong>Assists:</strong> {data.assists}</p>}
+                                {data.bonus > 0 && <p><strong>Bonus:</strong> {data.bonus}</p>}
+                                {data.cleanSheet > 0 && <p><strong>Clean Sheet:</strong> ✓</p>}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="points"
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      dot={{ fill: '#f59e0b', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             )}
-            {player.expected_assists && parseFloat(player.expected_assists) > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">xA (Expected Assists)</p>
-                <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_assists).toFixed(2)}</p>
-              </div>
-            )}
-            {player.expected_goal_involvements && parseFloat(player.expected_goal_involvements) > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">xGI (Involvements)</p>
-                <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goal_involvements).toFixed(2)}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-muted-foreground text-xs">Bonus Points</p>
-              <p className="font-semibold text-lg">{player.bonus}</p>
-            </div>
-          </div>
-        </div>
 
-        {/* Defensive Stats */}
-        <Separator />
-        <div>
-          <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">🛡️ Defensive Stats</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {/* Attacking Stats */}
+            <Separator />
             <div>
-              <p className="text-muted-foreground text-xs">Clean Sheets</p>
-              <p className="font-semibold text-lg">{player.clean_sheets}</p>
+              <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">⚽ Attacking Stats</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Goals</p>
+                  <p className="font-semibold text-lg">{player.goals_scored}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Assists</p>
+                  <p className="font-semibold text-lg">{player.assists}</p>
+                </div>
+                {player.expected_goals && parseFloat(player.expected_goals) > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">xG (Expected Goals)</p>
+                    <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goals).toFixed(2)}</p>
+                  </div>
+                )}
+                {player.expected_assists && parseFloat(player.expected_assists) > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">xA (Expected Assists)</p>
+                    <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_assists).toFixed(2)}</p>
+                  </div>
+                )}
+                {player.expected_goal_involvements && parseFloat(player.expected_goal_involvements) > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">xGI (Involvements)</p>
+                    <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goal_involvements).toFixed(2)}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-muted-foreground text-xs">Bonus Points</p>
+                  <p className="font-semibold text-lg">{player.bonus}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Goals Conceded</p>
-              <p className="font-semibold text-lg">{player.goals_conceded}</p>
-            </div>
-            {player.expected_goals_conceded && parseFloat(player.expected_goals_conceded) > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">xGC (Expected Conceded)</p>
-                <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goals_conceded).toFixed(2)}</p>
-              </div>
-            )}
-            {player.saves !== undefined && player.saves > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">Saves</p>
-                <p className="font-semibold text-lg text-blue-600">{player.saves}</p>
-              </div>
-            )}
-            {player.penalties_saved !== undefined && player.penalties_saved > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">Penalties Saved</p>
-                <p className="font-semibold text-lg text-green-600">{player.penalties_saved}</p>
-              </div>
-            )}
-            {player.own_goals !== undefined && player.own_goals > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">Own Goals</p>
-                <p className="font-semibold text-lg text-red-600">{player.own_goals}</p>
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* Disciplinary & Other */}
-        <Separator />
-        <div>
-          <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">📊 Other Stats</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {/* Defensive Stats */}
+            <Separator />
             <div>
-              <p className="text-muted-foreground text-xs">Minutes Played</p>
-              <p className="font-semibold text-lg">{player.minutes}</p>
-            </div>
-            {player.yellow_cards !== undefined && (
-              <div>
-                <p className="text-muted-foreground text-xs">Yellow Cards</p>
-                <p className="font-semibold text-lg text-yellow-600">{player.yellow_cards}</p>
+              <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">🛡️ Defensive Stats</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Clean Sheets</p>
+                  <p className="font-semibold text-lg">{player.clean_sheets}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Goals Conceded</p>
+                  <p className="font-semibold text-lg">{player.goals_conceded}</p>
+                </div>
+                {player.expected_goals_conceded && parseFloat(player.expected_goals_conceded) > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">xGC (Expected Conceded)</p>
+                    <p className="font-semibold text-lg text-purple-600">{parseFloat(player.expected_goals_conceded).toFixed(2)}</p>
+                  </div>
+                )}
+                {player.saves !== undefined && player.saves > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Saves</p>
+                    <p className="font-semibold text-lg text-blue-600">{player.saves}</p>
+                  </div>
+                )}
+                {player.penalties_saved !== undefined && player.penalties_saved > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Penalties Saved</p>
+                    <p className="font-semibold text-lg text-green-600">{player.penalties_saved}</p>
+                  </div>
+                )}
+                {player.own_goals !== undefined && player.own_goals > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Own Goals</p>
+                    <p className="font-semibold text-lg text-red-600">{player.own_goals}</p>
+                  </div>
+                )}
               </div>
-            )}
-            {player.red_cards !== undefined && player.red_cards > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">Red Cards</p>
-                <p className="font-semibold text-lg text-red-600">{player.red_cards}</p>
-              </div>
-            )}
-            {player.penalties_missed !== undefined && player.penalties_missed > 0 && (
-              <div>
-                <p className="text-muted-foreground text-xs">Penalties Missed</p>
-                <p className="font-semibold text-lg text-orange-600">{player.penalties_missed}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-muted-foreground text-xs">ICT Index</p>
-              <p className="font-semibold text-lg">{parseFloat(player.ict_index).toFixed(1)}</p>
             </div>
-            {player.bps !== undefined && (
-              <div>
-                <p className="text-muted-foreground text-xs">BPS (Bonus System)</p>
-                <p className="font-semibold text-lg">{player.bps}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-muted-foreground text-xs">Transfers In (GW)</p>
-              <p className="font-semibold text-lg text-green-600">{player.transfers_in_event.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Transfers Out (GW)</p>
-              <p className="font-semibold text-lg text-red-600">{player.transfers_out_event.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
 
-        {gameweekData.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <p>No gameweek data available for this player yet</p>
-          </div>
-        )}
+            {/* Disciplinary & Other */}
+            <Separator />
+            <div>
+              <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">📊 Other Stats</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Minutes Played</p>
+                  <p className="font-semibold text-lg">{player.minutes}</p>
+                </div>
+                {player.yellow_cards !== undefined && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Yellow Cards</p>
+                    <p className="font-semibold text-lg text-yellow-600">{player.yellow_cards}</p>
+                  </div>
+                )}
+                {player.red_cards !== undefined && player.red_cards > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Red Cards</p>
+                    <p className="font-semibold text-lg text-red-600">{player.red_cards}</p>
+                  </div>
+                )}
+                {player.penalties_missed !== undefined && player.penalties_missed > 0 && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">Penalties Missed</p>
+                    <p className="font-semibold text-lg text-orange-600">{player.penalties_missed}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-muted-foreground text-xs">ICT Index</p>
+                  <p className="font-semibold text-lg">{parseFloat(player.ict_index).toFixed(1)}</p>
+                </div>
+                {player.bps !== undefined && (
+                  <div>
+                    <p className="text-muted-foreground text-xs">BPS (Bonus System)</p>
+                    <p className="font-semibold text-lg">{player.bps}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-muted-foreground text-xs">Transfers In (GW)</p>
+                  <p className="font-semibold text-lg text-green-600">{player.transfers_in_event.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Transfers Out (GW)</p>
+                  <p className="font-semibold text-lg text-red-600">{player.transfers_out_event.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+
+            {gameweekData.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No gameweek data available for this player yet</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Performance Analysis Tab */}
+          <TabsContent value="performance" className="mt-4">
+            <PlayerPerformanceAnalysis
+              player={player}
+              playerHistory={playerHistory}
+              fixtures={fixtures}
+              teams={teams}
+            />
+          </TabsContent>
+
+          {/* Detailed Stats Tab */}
+          <TabsContent value="stats" className="mt-4 space-y-4">
+            {/* Detailed Statistics */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">Goals</p>
+                <p className="font-semibold text-lg">{player.goals_scored}</p>
+              </div>
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">Assists</p>
+                <p className="font-semibold text-lg">{player.assists}</p>
+              </div>
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">Clean Sheets</p>
+                <p className="font-semibold text-lg">{player.clean_sheets}</p>
+              </div>
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">Bonus Points</p>
+                <p className="font-semibold text-lg">{player.bonus}</p>
+              </div>
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">Minutes</p>
+                <p className="font-semibold text-lg">{player.minutes}</p>
+              </div>
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-muted-foreground text-xs">ICT Index</p>
+                <p className="font-semibold text-lg">{parseFloat(player.ict_index).toFixed(1)}</p>
+              </div>
+              {player.expected_goals && (
+                <div className="p-3 rounded-lg border bg-card">
+                  <p className="text-muted-foreground text-xs">xG</p>
+                  <p className="font-semibold text-lg">{parseFloat(player.expected_goals).toFixed(2)}</p>
+                </div>
+              )}
+              {player.expected_assists && (
+                <div className="p-3 rounded-lg border bg-card">
+                  <p className="text-muted-foreground text-xs">xA</p>
+                  <p className="font-semibold text-lg">{parseFloat(player.expected_assists).toFixed(2)}</p>
+                </div>
+              )}
+              {player.expected_goal_involvements && (
+                <div className="p-3 rounded-lg border bg-card">
+                  <p className="text-muted-foreground text-xs">xGI</p>
+                  <p className="font-semibold text-lg">{parseFloat(player.expected_goal_involvements).toFixed(2)}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Transfer Activity */}
+            <div className="p-4 rounded-lg border bg-card">
+              <h4 className="font-semibold mb-3">Transfer Activity</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-muted-foreground text-xs">Transfers In (GW)</p>
+                  <p className="font-semibold text-lg text-green-600">{player.transfers_in_event.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Transfers Out (GW)</p>
+                  <p className="font-semibold text-lg text-red-600">{player.transfers_out_event.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
 }
-
