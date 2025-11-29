@@ -5,7 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { fetchFixtures } from '@/lib/fpl-api';
 import { DashboardWrapper } from '@/components/dashboard-wrapper';
-import { fetchScoutReports, analyzeScoutReports } from '@/lib/rss';
+import { ScoutReportsWrapper } from '@/components/scout-reports-wrapper';
+import { Loader2 } from 'lucide-react';
 
 const DEFAULT_TEAM_ID = 3992229;
 
@@ -17,23 +18,8 @@ async function getDashboardData(teamId: number) {
       fetchFixtures(),
     ]);
 
-    // Fetch scout reports separately to prevent blocking critical data
-    let scoutReports: any[] = [];
-    try {
-      scoutReports = await fetchScoutReports();
-    } catch (error) {
-      console.error('Failed to fetch scout reports:', error);
-      // Fallback to empty array
-    }
-
-    // Analyze reports for player mentions
-    let playerMentions: any[] = [];
-    try {
-      playerMentions = analyzeScoutReports(scoutReports, bootstrapData.elements);
-    } catch (error) {
-      console.error('Error analyzing scout reports:', error);
-      // Continue without mentions if analysis fails
-    }
+    // Note: Scout reports are now fetched in a separate server component (ScoutReportsWrapper)
+    // to allow streaming and prevent blocking the main dashboard load.
 
     const currentGameweek = getCurrentGameweek(bootstrapData.events);
 
@@ -110,8 +96,6 @@ async function getDashboardData(teamId: number) {
       entryHistory: managerTeam.entry_history,
       playerHistories,
       squadPlayerIds: playerIdsSet, // For visual distinction
-      scoutReports,
-      playerMentions,
     };
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -130,6 +114,15 @@ function LoadingCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ReportsLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center h-64 space-y-4 text-muted-foreground">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p>Loading latest scout reports...</p>
+    </div>
   );
 }
 
@@ -160,8 +153,11 @@ export default async function Home({
           playerTeams={data.playerTeams}
           playerHistories={data.playerHistories}
           squadPlayerIds={data.squadPlayerIds}
-          scoutReports={data.scoutReports}
-          playerMentions={data.playerMentions}
+          reportsTabContent={
+            <Suspense fallback={<ReportsLoading />}>
+              <ScoutReportsWrapper allPlayers={data.allPlayers} />
+            </Suspense>
+          }
         />
       </Suspense>
 
