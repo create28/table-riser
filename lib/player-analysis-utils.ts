@@ -53,7 +53,22 @@ export function analyzePlayerPerformance(
         overall: { homeAvg: 0, awayAvg: 0, totalGames: 0 }
     };
 
-    if (!playerHistory || !playerHistory.history) return breakdown;
+    // Defensive checks for missing or invalid data
+    if (!playerHistory || !playerHistory.history || !Array.isArray(playerHistory.history)) {
+        return breakdown;
+    }
+
+    if (!fixtures || !Array.isArray(fixtures) || fixtures.length === 0) {
+        return breakdown;
+    }
+
+    if (!teams || !Array.isArray(teams) || teams.length === 0) {
+        return breakdown;
+    }
+
+    if (!player || !player.team) {
+        return breakdown;
+    }
 
     const history = playerHistory.history;
     let totalHomePoints = 0;
@@ -62,12 +77,17 @@ export function analyzePlayerPerformance(
     let awayGames = 0;
 
     history.forEach((game: any) => {
+        // Safety checks
+        if (!game || typeof game.round !== 'number' || typeof game.total_points !== 'number') {
+            return;
+        }
+
         const gameweek = game.round;
         const points = game.total_points;
 
         // Find the fixture for this gameweek
         const fixture = fixtures.find(f =>
-            f.event === gameweek &&
+            f && f.event === gameweek &&
             (f.team_h === player.team || f.team_a === player.team)
         );
 
