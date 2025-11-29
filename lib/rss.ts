@@ -58,3 +58,69 @@ export async function fetchScoutReports(): Promise<ScoutReportItem[]> {
     // Sort by date descending
     return allItems.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 }
+
+export interface PlayerMention {
+    playerId: number;
+    name: string;
+    count: number;
+    context: string[];
+}
+
+export function analyzeScoutReports(reports: ScoutReportItem[], allPlayers: any[]): PlayerMention[] {
+    const mentionsMap = new Map<number, PlayerMention>();
+
+    // Combine all text from reports (title + summary)
+    // Limit to recent reports (last 7 days) to keep it relevant to current GW
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const relevantReports = reports.filter(r => new Date(r.pubDate) > oneWeekAgo);
+
+    relevantReports.forEach(report => {
+        const text = `${report.title} ${report.summary || ''}`.toLowerCase();
+
+        allPlayers.forEach(player => {
+            // Use web_name (e.g. "Saka", "Haaland") for matching
+            // Avoid very short names (<= 3 chars) unless they are unique/common like "Son"
+            // But "Son" matches "Season", "Reason" etc. So need word boundaries.
+            const name = player.web_name.toLowerCase();
+
+            // Skip generic names that might be common words if short
+            if (name.length < 4 && !['son', 'mee', 'ali'].includes(name)) return;
+            // Skip "Best", "White", "Rice", "Young", "Long" if we want to be safe, but let's try regex word boundary
+
+            const regex = new RegExp(`\\b${name}\\b`, 'g');
+            const matches = text.match(regex);
+
+            if (matches && matches.length > 0) {
+                if (!mentionsMap.has(player.id)) {
+                    mentionsMap.set(player.id, {
+                        playerId: player.id,
+                        name: player.web_name,
+                        count: 0,
+                        context: []
+                    });
+                }
+
+                const mention = mentionsMap.get(player.id)!;
+                mention.count += matches.length;
+
+                // Extract context (sentence or surrounding words)
+                // Simple approach: find index and take +/- 50 chars
+                const idx = text.indexOf(name);
+                if (idx !== -1 && mention.context.length < 3) {
+                    const start = Math.max(0, idx - 40);
+                    const end = Math.min(text.length, idx + name.length + 40);
+                    let snippet = text.substring(start, end).trim();
+                    if (start > 0) snippet = '...' + snippet;
+                    if (end < text.length) snippet = snippet + '...';
+                    mention.context.push(snippet);
+                }
+            }
+        });
+    });
+
+    return Array.from(mentionsMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10); // Top 10 mentions
+}

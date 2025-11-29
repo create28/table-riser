@@ -183,11 +183,16 @@ function analyzeChip(
             recommendedGw = currentGw; // Use now if running out of time
         } else {
             // Heuristic: Late season wildcard usually around GW30-35
-            const estimatedGw = currentGw < 30 ? 30 : 35;
-            if (weeksRemaining > 5) {
-                reason = `Hold for fixture swing or DGW preparation (Est. GW${estimatedGw})`;
+            // If Set 1 (deadline <= 19), heuristic is just "Use before GW19"
+            if (deadlineGw <= 19) {
+                reason = "Use before GW19 expires. Target fixture swings.";
             } else {
-                reason = "Save for major team restructure or fixture swing";
+                const estimatedGw = currentGw < 30 ? 30 : 35;
+                if (weeksRemaining > 5) {
+                    reason = `Hold for fixture swing or DGW preparation (Est. GW${estimatedGw})`;
+                } else {
+                    reason = "Save for major team restructure or fixture swing";
+                }
             }
         }
     } else if (apiName === '3xc') {
@@ -199,8 +204,12 @@ function analyzeChip(
             if (dgw - currentGw <= 2) urgency = 'high';
         } else {
             // Heuristic: Big DGWs usually GW34, GW37
-            const estimatedGw = currentGw < 34 ? 34 : 37;
-            reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
+            if (deadlineGw <= 19) {
+                reason = "Save for a mini-DGW or strong fixture before GW19";
+            } else {
+                const estimatedGw = currentGw < 34 ? 34 : 37;
+                reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
+            }
         }
     } else if (apiName === 'bboost') {
         // Recommend on DGW
@@ -210,8 +219,12 @@ function analyzeChip(
             reason = `Target Double Gameweek ${dgw} with strong bench`;
         } else {
             // Heuristic: Big DGWs usually GW34, GW37
-            const estimatedGw = currentGw < 34 ? 34 : 37;
-            reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
+            if (deadlineGw <= 19) {
+                reason = "Save for a mini-DGW or strong bench week before GW19";
+            } else {
+                const estimatedGw = currentGw < 34 ? 34 : 37;
+                reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
+            }
         }
     } else if (apiName === 'freehit') {
         // Recommend on BGW (Blank Gameweek)
@@ -227,8 +240,12 @@ function analyzeChip(
                 reason = `Consider for Double Gameweek ${dgw}`;
             } else {
                 // Heuristic: Big BGW usually GW29, DGWs GW34/37
-                const estimatedGw = currentGw < 29 ? 29 : (currentGw < 34 ? 34 : 37);
-                reason = `Hold for a Blank or Double Gameweek (Likely GW${estimatedGw})`;
+                if (deadlineGw <= 19) {
+                    reason = "Hold for a Blank or Double Gameweek before GW19";
+                } else {
+                    const estimatedGw = currentGw < 29 ? 29 : (currentGw < 34 ? 34 : 37);
+                    reason = `Hold for a Blank or Double Gameweek (Likely GW${estimatedGw})`;
+                }
             }
         }
     }

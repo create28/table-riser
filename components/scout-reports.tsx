@@ -1,11 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Newspaper, Wrench } from "lucide-react";
-import { ScoutReportItem } from "@/lib/rss";
+import { ExternalLink, Newspaper, Wrench, TrendingUp, Quote } from "lucide-react";
+import { ScoutReportItem, PlayerMention } from "@/lib/rss";
 import { Button } from "@/components/ui/button";
 
 interface ScoutReportsProps {
     reports: ScoutReportItem[];
+    mentions?: PlayerMention[];
 }
 
 const TOOLS = [
@@ -35,9 +36,41 @@ const TOOLS = [
     }
 ];
 
-export function ScoutReports({ reports }: ScoutReportsProps) {
+export function ScoutReports({ reports, mentions = [] }: ScoutReportsProps) {
     return (
         <div className="space-y-8">
+            {/* Player Buzz Section */}
+            {mentions.length > 0 && (
+                <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-primary" />
+                        <h2 className="text-xl font-bold">Player Buzz (Last 7 Days)</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {mentions.map((mention) => (
+                            <Card key={mention.playerId} className="bg-muted/30">
+                                <CardHeader className="pb-2">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-lg">{mention.name}</CardTitle>
+                                        <Badge variant="secondary">{mention.count} Mentions</Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-2">
+                                        {mention.context.slice(0, 2).map((ctx, idx) => (
+                                            <div key={idx} className="flex gap-2 text-xs text-muted-foreground italic">
+                                                <Quote className="h-3 w-3 min-w-3 mt-1" />
+                                                <p>"{ctx}"</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* Latest News Section */}
             <section className="space-y-4">
                 <div className="flex items-center gap-2">
