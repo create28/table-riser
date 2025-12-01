@@ -559,7 +559,7 @@ export function TransferStrategyClient({
     }
 
     return strategy;
-  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling]);
+  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling, useML, mlWeights]);
 
   // Get difficulty badge color
   const getDifficultyColor = (difficulty: number) => {
