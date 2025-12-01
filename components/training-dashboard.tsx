@@ -89,8 +89,24 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
             const result = runSimulation(scenario, currentWeights, playerHistories, fixtures);
 
             if (result.transferIn && result.transferOut) {
+                // 1. Track the decision first
+                const decision = await TransferTracker.trackDecision({
+                    gameweek: gameweek,
+                    teamId: 0, // Simulation
+                    playerOut: result.transferOut,
+                    playerIn: result.transferIn,
+                    reasoning: {
+                        formWeight: currentWeights.formWeight,
+                        fixtureWeight: currentWeights.fixtureWeight,
+                        ictWeight: currentWeights.ictWeight,
+                        priceWeight: currentWeights.priceWeight,
+                        score: result.predictedPoints
+                    }
+                });
+
+                // 2. Record Outcome
                 const outcome = await TransferTracker.recordOutcome({
-                    decisionId: `sim-${Date.now()}-${i}`,
+                    decisionId: decision.id,
                     actualPointsGained: result.pointsDiff,
                     weeksEvaluated: 3,
                     successScore: result.success ? 100 : 0
@@ -181,8 +197,24 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
                 const result = runSimulation(scenario, updatedWeights, playerHistories, fixtures);
 
                 if (result.transferIn && result.transferOut) {
+                    // 1. Track the decision first (saves to DB)
+                    const decision = await TransferTracker.trackDecision({
+                        gameweek: gw,
+                        teamId: 0, // Simulation team ID
+                        playerOut: result.transferOut,
+                        playerIn: result.transferIn,
+                        reasoning: {
+                            formWeight: updatedWeights.formWeight,
+                            fixtureWeight: updatedWeights.fixtureWeight,
+                            ictWeight: updatedWeights.ictWeight,
+                            priceWeight: updatedWeights.priceWeight,
+                            score: result.predictedPoints
+                        }
+                    });
+
+                    // 2. Record the outcome using the decision ID
                     const outcome = await TransferTracker.recordOutcome({
-                        decisionId: `season-sim-${gw}-${i}-${Date.now()}`,
+                        decisionId: decision.id,
                         actualPointsGained: result.pointsDiff,
                         weeksEvaluated: 3,
                         successScore: result.success ? 100 : 0
