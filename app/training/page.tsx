@@ -70,7 +70,6 @@ export default async function TrainingPage() {
             <Suspense fallback={<LoadingCard />}>
                 <TrainingDashboard
                     allPlayers={data.allPlayers}
-                    teams={data.teams}
                     fixtures={data.fixtures}
                     playerHistories={data.playerHistories}
                 />

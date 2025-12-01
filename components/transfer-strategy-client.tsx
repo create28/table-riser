@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { usePlayerDetail } from '@/components/player-detail-provider';
 import { LearningEngine, AlgorithmWeights } from '@/lib/ml-learning-engine';
+import { AVAILABLE_METRICS } from '@/lib/metric-engine';
 
 interface TransferStrategyClientProps {
   teams: Team[];
@@ -310,10 +311,13 @@ export function TransferStrategyClient({
 
     if (useML && mlWeights) {
       // Use ML Weights
-      // Normalize weights to ensure they sum to ~1.0 for the score components we have
-      // We have Fixture, Form, and Volatility (proxy for ICT/Stats)
+      let totalWeight = mlWeights.fixtureWeight + mlWeights.formWeight + mlWeights.ictWeight;
 
-      const totalWeight = mlWeights.fixtureWeight + mlWeights.formWeight + mlWeights.ictWeight;
+      // Add custom weights to total
+      if (mlWeights.customWeights) {
+        Object.values(mlWeights.customWeights).forEach(w => totalWeight += w);
+      }
+
       const wFixture = mlWeights.fixtureWeight / totalWeight;
       const wForm = mlWeights.formWeight / totalWeight;
       const wVol = mlWeights.ictWeight / totalWeight;
@@ -323,6 +327,33 @@ export function TransferStrategyClient({
         formScore * wForm +
         volatilityScore * wVol
       );
+
+      // Add Custom Metrics
+      if (mlWeights.customWeights) {
+        Object.entries(mlWeights.customWeights).forEach(([metricId, weight]) => {
+          const metricDef = AVAILABLE_METRICS.find(m => m.id === metricId);
+          if (metricDef) {
+            let rawValue = metricDef.getValue(player);
+
+            // Normalize to ~0-100 scale
+            // This is a heuristic; ideally we'd have max values or per-90 stats
+            if (['xg', 'xa', 'xgi'].includes(metricId)) {
+              // xG is usually low (e.g. 0.5 per game), so multiply
+              rawValue = rawValue * 100;
+            } else if (['threat', 'influence', 'creativity'].includes(metricId)) {
+              // ICT values can be high (e.g. 50-100), so keep or slightly dampen
+              rawValue = Math.min(100, rawValue / 2);
+            }
+
+            const normalizedScore = Math.min(100, Math.max(0, rawValue));
+            const wCustom = weight / totalWeight;
+
+            score += normalizedScore * wCustom;
+
+            if (normalizedScore > 70) reasoning.push(`High ${metricDef.name}`);
+          }
+        });
+      }
     } else {
       // Traditional Logic
       const volatilityWeight = volatilityPref / 100;

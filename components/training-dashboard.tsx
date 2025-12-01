@@ -5,35 +5,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Play, RotateCcw, Brain, Database } from 'lucide-react';
+import { Play, RotateCcw, Brain, Database, Search, Loader2 } from 'lucide-react';
 import { LearningEngine, AlgorithmWeights } from '@/lib/ml-learning-engine';
 import { TransferTracker, TransferOutcome } from '@/lib/ml-transfer-tracker';
-import { Player, Team, Fixture } from '@/lib/fpl-api';
-import { runSimulation, SimulationScenario } from '@/lib/simulation-utils';
+import { Player, Fixture } from '@/lib/fpl-api';
+import { runSimulation, reconstructPlayerState, SimulationScenario, SimulationResult } from '@/lib/simulation-utils';
+import { MetricScout, AVAILABLE_METRICS, MetricCorrelation } from '@/lib/metric-engine';
 
-interface TrainingDashboardProps {
-    allPlayers: Player[];
-    teams: Team[];
-    fixtures: Fixture[];
-    playerHistories: { [key: number]: any };
-}
-
-export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories }: TrainingDashboardProps) {
+export function TrainingDashboard({
+    allPlayers,
+    playerHistories,
+    fixtures
+}: {
+    allPlayers: Player[],
+    playerHistories: { [key: number]: any },
+    fixtures: Fixture[]
+}) {
     const [weights, setWeights] = useState<AlgorithmWeights | null>(null);
     const [outcomes, setOutcomes] = useState<TransferOutcome[]>([]);
     const [isTraining, setIsTraining] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
 
+    // Metric Scout State
+    const [isScouting, setIsScouting] = useState(false);
+    const [correlations, setCorrelations] = useState<MetricCorrelation[]>([]);
+
     useEffect(() => {
-        // Load initial data
-        const loadData = async () => {
-            const currentWeights = await LearningEngine.getCurrentWeights();
-            setWeights(currentWeights);
-            const currentOutcomes = await TransferTracker.getOutcomes();
-            setOutcomes(currentOutcomes);
-        };
         loadData();
     }, []);
+
+    const loadData = async () => {
+        const w = await LearningEngine.getCurrentWeights();
+        setWeights(w);
+        const o = await TransferTracker.getOutcomes();
+        setOutcomes(o);
+    };
 
     const runSimulationBatch = async () => {
         setIsTraining(true);
@@ -126,13 +132,15 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
         // 4. Train model
         if (newOutcomes.length > 0) {
             const result = await LearningEngine.trainModel();
-            setWeights(result.newWeights);
+            if (result.success) {
+                setWeights(result.newWeights);
+                setLogs(prev => [`[LEARNING] ${result.message}`, ...prev]);
+            } else {
+                setLogs(prev => [`[LEARNING] Skipped: ${result.message}`, ...prev]);
+            }
+
             const updatedOutcomes = await TransferTracker.getOutcomes();
             setOutcomes(updatedOutcomes);
-
-            result.improvements.forEach(imp => {
-                setLogs(prev => [`[LEARNING] ${imp}`, ...prev]);
-            });
         }
 
         setIsTraining(false);
@@ -229,13 +237,15 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
 
             // Train model after each gameweek batch
             if (gwOutcomes.length > 0) {
+                // Train model
                 const trainingResult = await LearningEngine.trainModel();
-                updatedWeights = trainingResult.newWeights;
-
-                setLogs(prev => [
-                    `✅ GW${gw}: ${gwOutcomes.length} simulations completed. Model updated.`,
-                    ...prev
-                ]);
+                if (trainingResult.success) {
+                    updatedWeights = trainingResult.newWeights; // Update local variable for next iterations
+                    setWeights(trainingResult.newWeights); // Update state for UI
+                    setLogs(prev => [`✅ GW${gw}: ${gwOutcomes.length} simulations completed. Model updated. ${trainingResult.message}`, ...prev]);
+                } else {
+                    setLogs(prev => [`⚠️ GW${gw}: ${gwOutcomes.length} simulations completed. Training skipped: ${trainingResult.message}`, ...prev]);
+                }
             } else {
                 setLogs(prev => [`⚠️ GW${gw}: No suitable transfers found`, ...prev]);
             }
