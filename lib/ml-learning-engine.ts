@@ -97,19 +97,24 @@ export const LearningEngine = {
 
         if (successRate < 0.4) {
             // Performance is poor, try something different (Exploration)
-            improvements.push(`Success rate low (${(successRate * 100).toFixed(0)}%). Adjusting strategy significantly.`);
-            newWeights.formWeight = Math.max(0.1, Math.min(0.9, currentWeights.formWeight + (Math.random() - 0.5) * 0.2));
-            newWeights.fixtureWeight = Math.max(0.1, Math.min(0.9, currentWeights.fixtureWeight + (Math.random() - 0.5) * 0.2));
-            // Normalize
-            const total = newWeights.formWeight + newWeights.fixtureWeight + currentWeights.ictWeight + currentWeights.priceWeight;
-            newWeights.formWeight /= total;
-            newWeights.fixtureWeight /= total;
-            newWeights.ictWeight /= total;
-            newWeights.priceWeight /= total;
+            improvements.push(`Success rate low (${(successRate * 100).toFixed(0)}%). Exploring new strategies.`);
+            // Large perturbation (±0.2)
+            newWeights.formWeight = Math.max(0.1, Math.min(0.9, currentWeights.formWeight + (Math.random() - 0.5) * 0.4));
+            newWeights.fixtureWeight = Math.max(0.1, Math.min(0.9, currentWeights.fixtureWeight + (Math.random() - 0.5) * 0.4));
         } else {
-            // Performance is okay/good, minor tweaks (Exploitation)
+            // Performance is good, fine-tune (Exploitation)
             improvements.push(`Success rate good (${(successRate * 100).toFixed(0)}%). Fine-tuning strategy.`);
+            // Small perturbation (±0.1) to find local maxima
+            newWeights.formWeight = Math.max(0.1, Math.min(0.9, currentWeights.formWeight + (Math.random() - 0.5) * 0.1));
+            newWeights.fixtureWeight = Math.max(0.1, Math.min(0.9, currentWeights.fixtureWeight + (Math.random() - 0.5) * 0.1));
         }
+
+        // Normalize weights
+        const total = newWeights.formWeight + newWeights.fixtureWeight + currentWeights.ictWeight + currentWeights.priceWeight;
+        newWeights.formWeight /= total;
+        newWeights.fixtureWeight /= total;
+        newWeights.ictWeight /= total;
+        newWeights.priceWeight /= total;
 
         // Save new weights to Supabase
         const { error } = await supabase
