@@ -18,6 +18,7 @@ const DEFAULT_WEIGHTS: AlgorithmWeights = {
 export const LearningEngine = {
     // Get current weights
     getCurrentWeights: async (): Promise<AlgorithmWeights> => {
+        if (!supabase) return DEFAULT_WEIGHTS;
         const { data, error } = await supabase
             .from('fpl_weights')
             .select('*')
@@ -44,6 +45,7 @@ export const LearningEngine = {
 
     // Reset weights to default
     resetWeights: async () => {
+        if (!supabase) return DEFAULT_WEIGHTS;
         // Deactivate all current weights
         await supabase
             .from('fpl_weights')
@@ -66,6 +68,7 @@ export const LearningEngine = {
 
     // Learn from outcomes and adjust weights
     trainModel: async (): Promise<{ oldWeights: AlgorithmWeights; newWeights: AlgorithmWeights; improvements: string[] }> => {
+        if (!supabase) return { oldWeights: DEFAULT_WEIGHTS, newWeights: DEFAULT_WEIGHTS, improvements: ['Supabase not configured'] };
         const outcomes = await TransferTracker.getOutcomes();
         const currentWeights = await LearningEngine.getCurrentWeights();
 

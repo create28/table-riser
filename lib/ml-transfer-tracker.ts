@@ -37,6 +37,7 @@ export const TransferTracker = {
         };
 
         // Save to Supabase
+        if (!supabase) return newDecision;
         const { error } = await supabase
             .from('fpl_decisions')
             .insert({
@@ -60,6 +61,7 @@ export const TransferTracker = {
 
     // Get all decisions
     getDecisions: async (): Promise<TransferDecision[]> => {
+        if (!supabase) return [];
         const { data, error } = await supabase
             .from('fpl_decisions')
             .select('*')
@@ -92,6 +94,7 @@ export const TransferTracker = {
         };
 
         // Save Outcome
+        if (!supabase) return newOutcome;
         const { error: outcomeError } = await supabase
             .from('fpl_outcomes')
             .insert({
@@ -121,6 +124,7 @@ export const TransferTracker = {
 
     // Get all outcomes
     getOutcomes: async (): Promise<TransferOutcome[]> => {
+        if (!supabase) return [];
         const { data, error } = await supabase
             .from('fpl_outcomes')
             .select('*')
