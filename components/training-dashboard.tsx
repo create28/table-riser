@@ -62,20 +62,21 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
             // 1. Pick random GW
             const gameweek = Math.floor(Math.random() * (maxStartGw - minStartGw + 1)) + minStartGw;
 
-            // 2. Pick random team (15 players)
-            const availablePlayerIds = Object.keys(playerHistories).map(Number);
-            if (availablePlayerIds.length < 20) {
+            // 2. Use top 200 players by total points for more realistic scenarios
+            const topPlayers = allPlayers
+                .filter(p => playerHistories[p.id]?.history?.length > 0)
+                .sort((a, b) => b.total_points - a.total_points)
+                .slice(0, 200);
+
+            if (topPlayers.length < 20) {
                 setLogs(prev => ['Error: Not enough player history data', ...prev]);
                 break;
             }
 
-            // Shuffle and pick 15
-            const shuffled = availablePlayerIds.sort(() => 0.5 - Math.random());
-            const teamIds = shuffled.slice(0, 15);
-            const marketIds = shuffled.slice(15); // The rest are market
-
-            const team = allPlayers.filter(p => teamIds.includes(p.id));
-            const market = allPlayers.filter(p => marketIds.includes(p.id));
+            // Shuffle top players and pick 15 for team, rest for market
+            const shuffled = topPlayers.sort(() => 0.5 - Math.random());
+            const team = shuffled.slice(0, 15);
+            const market = shuffled.slice(15);
 
             const scenario: SimulationScenario = {
                 gameweek,
@@ -153,20 +154,21 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
 
             // Run multiple scenarios for this gameweek
             for (let i = 0; i < scenariosPerGw; i++) {
-                // Pick random team (15 players)
-                const availablePlayerIds = Object.keys(playerHistories).map(Number);
-                if (availablePlayerIds.length < 20) {
+                // Use top 200 players by total points for more realistic scenarios
+                const topPlayers = allPlayers
+                    .filter(p => playerHistories[p.id]?.history?.length > 0)
+                    .sort((a, b) => b.total_points - a.total_points)
+                    .slice(0, 200);
+
+                if (topPlayers.length < 20) {
                     setLogs(prev => ['⚠️ Error: Not enough player history data', ...prev]);
                     break;
                 }
 
-                // Shuffle and pick 15
-                const shuffled = availablePlayerIds.sort(() => 0.5 - Math.random());
-                const teamIds = shuffled.slice(0, 15);
-                const marketIds = shuffled.slice(15);
-
-                const team = allPlayers.filter(p => teamIds.includes(p.id));
-                const market = allPlayers.filter(p => marketIds.includes(p.id));
+                // Shuffle top players and pick 15 for team, rest for market
+                const shuffled = topPlayers.sort(() => 0.5 - Math.random());
+                const team = shuffled.slice(0, 15);
+                const market = shuffled.slice(15);
 
                 const scenario: SimulationScenario = {
                     gameweek: gw,

@@ -119,7 +119,7 @@ export function runSimulation(
         }
     }
 
-    if (!bestTransferOut || !bestTransferIn || maxScoreDiff <= 0) {
+    if (!bestTransferOut || !bestTransferIn || maxScoreDiff < -2) {
         return {
             transferIn: null,
             transferOut: null,
