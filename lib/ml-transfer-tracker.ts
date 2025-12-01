@@ -1,4 +1,5 @@
-import { Player, Team } from './fpl-api';
+import { supabase } from './supabase';
+import { Player } from './fpl-api';
 
 export interface TransferDecision {
     id: string;
@@ -25,69 +26,122 @@ export interface TransferOutcome {
     timestamp: number;
 }
 
-const STORAGE_KEY_DECISIONS = 'fpl_ml_decisions';
-const STORAGE_KEY_OUTCOMES = 'fpl_ml_outcomes';
-
 export const TransferTracker = {
     // Save a new transfer decision
-    trackDecision: (decision: Omit<TransferDecision, 'id' | 'timestamp' | 'status'>) => {
-        if (typeof window === 'undefined') return;
-
-        const newDecision: TransferDecision = {
+    trackDecision: async (decision: Omit<TransferDecision, 'id' | 'timestamp' | 'status'>) => {
+        const newDecision = {
             ...decision,
             id: crypto.randomUUID(),
             timestamp: Date.now(),
-            status: 'pending'
+            status: 'pending' as const
         };
 
-        const decisions = TransferTracker.getDecisions();
-        decisions.push(newDecision);
-        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(decisions));
+        // Save to Supabase
+        const { error } = await supabase
+            .from('fpl_decisions')
+            .insert({
+                id: newDecision.id,
+                gameweek: newDecision.gameweek,
+                team_id: newDecision.teamId,
+                player_out_id: newDecision.playerOut.id,
+                player_in_id: newDecision.playerIn.id,
+                player_out_name: newDecision.playerOut.web_name,
+                player_in_name: newDecision.playerIn.web_name,
+                reasoning: newDecision.reasoning,
+                status: 'pending'
+            });
+
+        if (error) {
+            console.error('Error tracking decision:', error);
+        }
+
         return newDecision;
     },
 
     // Get all decisions
-    getDecisions: (): TransferDecision[] => {
-        if (typeof window === 'undefined') return [];
-        const data = localStorage.getItem(STORAGE_KEY_DECISIONS);
-        return data ? JSON.parse(data) : [];
+    getDecisions: async (): Promise<TransferDecision[]> => {
+        const { data, error } = await supabase
+            .from('fpl_decisions')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching decisions:', error);
+            return [];
+        }
+
+        // Map back to our interface (simplified, as we don't store full player objects in DB)
+        // We reconstruct minimal player objects for the interface
+        return data.map((d: any) => ({
+            id: d.id,
+            gameweek: d.gameweek,
+            teamId: d.team_id,
+            playerOut: { id: d.player_out_id, web_name: d.player_out_name } as Player,
+            playerIn: { id: d.player_in_id, web_name: d.player_in_name } as Player,
+            reasoning: d.reasoning,
+            timestamp: new Date(d.created_at).getTime(),
+            status: d.status
+        }));
     },
 
     // Record an outcome for a decision
-    recordOutcome: (outcome: Omit<TransferOutcome, 'timestamp'>) => {
-        if (typeof window === 'undefined') return;
-
-        const newOutcome: TransferOutcome = {
+    recordOutcome: async (outcome: Omit<TransferOutcome, 'timestamp'>) => {
+        const newOutcome = {
             ...outcome,
             timestamp: Date.now()
         };
 
-        const outcomes = TransferTracker.getOutcomes();
-        outcomes.push(newOutcome);
-        localStorage.setItem(STORAGE_KEY_OUTCOMES, JSON.stringify(outcomes));
+        // Save Outcome
+        const { error: outcomeError } = await supabase
+            .from('fpl_outcomes')
+            .insert({
+                decision_id: outcome.decisionId,
+                actual_points_gained: outcome.actualPointsGained,
+                weeks_evaluated: outcome.weeksEvaluated,
+                success_score: outcome.successScore
+            });
 
-        // Update decision status
-        const decisions = TransferTracker.getDecisions();
-        const decisionIndex = decisions.findIndex(d => d.id === outcome.decisionId);
-        if (decisionIndex !== -1) {
-            decisions[decisionIndex].status = 'evaluated';
-            localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(decisions));
+        if (outcomeError) {
+            console.error('Error recording outcome:', outcomeError);
+            return null;
+        }
+
+        // Update Decision Status
+        const { error: updateError } = await supabase
+            .from('fpl_decisions')
+            .update({ status: 'evaluated' })
+            .eq('id', outcome.decisionId);
+
+        if (updateError) {
+            console.error('Error updating decision status:', updateError);
         }
 
         return newOutcome;
     },
 
     // Get all outcomes
-    getOutcomes: (): TransferOutcome[] => {
-        if (typeof window === 'undefined') return [];
-        const data = localStorage.getItem(STORAGE_KEY_OUTCOMES);
-        return data ? JSON.parse(data) : [];
+    getOutcomes: async (): Promise<TransferOutcome[]> => {
+        const { data, error } = await supabase
+            .from('fpl_outcomes')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching outcomes:', error);
+            return [];
+        }
+
+        return data.map((d: any) => ({
+            decisionId: d.decision_id,
+            actualPointsGained: d.actual_points_gained,
+            weeksEvaluated: d.weeks_evaluated,
+            successScore: d.success_score,
+            timestamp: new Date(d.created_at).getTime()
+        }));
     },
 
-    // Clear all data (for reset)
-    clearData: () => {
-        if (typeof window === 'undefined') return;
-        localStorage.removeItem(STORAGE_KEY_DECISIONS);
-        localStorage.removeItem(STORAGE_KEY_OUTCOMES);
+    // Clear all data (Not implemented for Supabase to avoid accidental wipes)
+    clearData: async () => {
+        console.warn('Clear data not implemented for Supabase storage');
     }
 };

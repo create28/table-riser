@@ -1,3 +1,4 @@
+import { supabase } from './supabase';
 import { TransferTracker, TransferDecision, TransferOutcome } from './ml-transfer-tracker';
 
 export interface AlgorithmWeights {
@@ -14,28 +15,59 @@ const DEFAULT_WEIGHTS: AlgorithmWeights = {
     priceWeight: 0.05
 };
 
-const STORAGE_KEY_WEIGHTS = 'fpl_ml_weights';
-
 export const LearningEngine = {
     // Get current weights
-    getCurrentWeights: (): AlgorithmWeights => {
-        if (typeof window === 'undefined') return DEFAULT_WEIGHTS;
-        const data = localStorage.getItem(STORAGE_KEY_WEIGHTS);
-        return data ? JSON.parse(data) : DEFAULT_WEIGHTS;
+    getCurrentWeights: async (): Promise<AlgorithmWeights> => {
+        const { data, error } = await supabase
+            .from('fpl_weights')
+            .select('*')
+            .eq('active', true)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (error) {
+            console.error('Error fetching weights:', error);
+            return DEFAULT_WEIGHTS;
+        }
+
+        if (data && data.length > 0) {
+            return {
+                formWeight: data[0].form_weight,
+                fixtureWeight: data[0].fixture_weight,
+                ictWeight: data[0].ict_weight,
+                priceWeight: data[0].price_weight
+            };
+        }
+
+        return DEFAULT_WEIGHTS;
     },
 
     // Reset weights to default
-    resetWeights: () => {
-        if (typeof window === 'undefined') return;
-        localStorage.setItem(STORAGE_KEY_WEIGHTS, JSON.stringify(DEFAULT_WEIGHTS));
+    resetWeights: async () => {
+        // Deactivate all current weights
+        await supabase
+            .from('fpl_weights')
+            .update({ active: false })
+            .eq('active', true);
+
+        // Insert default
+        await supabase
+            .from('fpl_weights')
+            .insert({
+                form_weight: DEFAULT_WEIGHTS.formWeight,
+                fixture_weight: DEFAULT_WEIGHTS.fixtureWeight,
+                ict_weight: DEFAULT_WEIGHTS.ictWeight,
+                price_weight: DEFAULT_WEIGHTS.priceWeight,
+                active: true
+            });
+
         return DEFAULT_WEIGHTS;
     },
 
     // Learn from outcomes and adjust weights
-    trainModel: (): { oldWeights: AlgorithmWeights; newWeights: AlgorithmWeights; improvements: string[] } => {
-        const outcomes = TransferTracker.getOutcomes();
-        const decisions = TransferTracker.getDecisions();
-        const currentWeights = LearningEngine.getCurrentWeights();
+    trainModel: async (): Promise<{ oldWeights: AlgorithmWeights; newWeights: AlgorithmWeights; improvements: string[] }> => {
+        const outcomes = await TransferTracker.getOutcomes();
+        const currentWeights = await LearningEngine.getCurrentWeights();
 
         if (outcomes.length < 5) {
             return { oldWeights: currentWeights, newWeights: currentWeights, improvements: ['Insufficient data to train (need 5+ outcomes)'] };
@@ -47,7 +79,9 @@ export const LearningEngine = {
         // Simple Gradient Descent-like approach
         // We look at the top 20% performing transfers and see what characteristics they had
 
-        // 1. Join outcomes with decisions
+        // 1. Join outcomes with decisions (we need to fetch decisions)
+        const decisions = await TransferTracker.getDecisions();
+
         const analyzedData = outcomes.map(outcome => {
             const decision = decisions.find(d => d.id === outcome.decisionId);
             return { outcome, decision };
@@ -55,51 +89,6 @@ export const LearningEngine = {
 
         // 2. Separate into success and failure
         const successes = analyzedData.filter(item => item.outcome.actualPointsGained > 0);
-        const failures = analyzedData.filter(item => item.outcome.actualPointsGained < 0);
-
-        if (successes.length === 0) {
-            return { oldWeights: currentWeights, newWeights: currentWeights, improvements: ['No successful transfers to learn from yet'] };
-        }
-
-        // 3. Analyze Success Factors
-        // Did successful transfers rely more on Form or Fixtures?
-        // We can't easily know "why" it worked without more granular data, 
-        // but we can see if the "reasoning" scores correlated.
-
-        // For this V1, we'll use a simplified heuristic:
-        // If Form was the dominant factor in the decision score, and it succeeded -> Boost Form
-
-        let formBoost = 0;
-        let fixtureBoost = 0;
-        let ictBoost = 0;
-
-        successes.forEach(({ decision }) => {
-            if (!decision) return;
-            // This is a simplification. In a real ML model, we'd use features of the player, not just the weights used.
-            // But for "self-tuning weights", we want to reinforce the weights that were high during success.
-
-            // However, the decision.reasoning stores the weights used at the time.
-            // We need to know if the PLAYER had high form or good fixtures.
-            // Since we don't have the raw player stats from the past easily accessible here without storing them,
-            // we will rely on the fact that if the model recommended it, it scored high.
-
-            // Let's assume we want to converge towards weights that produce better outcomes.
-            // This part requires the simulation to run with *varied* weights to find the best ones.
-            // If we always use static weights, we can't learn much.
-            // So the "Training Mode" should introduce randomness (Epsilon-Greedy).
-        });
-
-        // REVISED STRATEGY:
-        // The "Training Mode" will run simulations with slightly randomized weights.
-        // We then see which set of weights produced the best average return.
-
-        // Group outcomes by the weights used (rounded to 1 decimal place)
-        // This is getting complex for a client-side only implementation.
-
-        // SIMPLER STRATEGY for V1:
-        // We will simply track the "Success Rate" of the current model.
-        // If the success rate is low (< 40%), we randomly perturb the weights to "explore".
-        // If the success rate is high (> 60%), we "exploit" (keep weights, maybe refine slightly).
 
         const successRate = successes.length / analyzedData.length;
 
@@ -117,12 +106,22 @@ export const LearningEngine = {
         } else {
             // Performance is okay/good, minor tweaks (Exploitation)
             improvements.push(`Success rate good (${(successRate * 100).toFixed(0)}%). Fine-tuning strategy.`);
-            // We could look at the most successful transfer and see if it was a "Form" pick or "Fixture" pick
-            // For now, let's just stabilize.
         }
 
-        // Save new weights
-        localStorage.setItem(STORAGE_KEY_WEIGHTS, JSON.stringify(newWeights));
+        // Save new weights to Supabase
+        const { error } = await supabase
+            .from('fpl_weights')
+            .insert({
+                form_weight: newWeights.formWeight,
+                fixture_weight: newWeights.fixtureWeight,
+                ict_weight: newWeights.ictWeight,
+                price_weight: newWeights.priceWeight,
+                active: true
+            });
+
+        if (error) {
+            console.error("Error saving new weights", error);
+        }
 
         return { oldWeights: currentWeights, newWeights, improvements };
     }

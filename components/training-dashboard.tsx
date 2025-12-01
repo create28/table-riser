@@ -26,8 +26,13 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
 
     useEffect(() => {
         // Load initial data
-        setWeights(LearningEngine.getCurrentWeights());
-        setOutcomes(TransferTracker.getOutcomes());
+        const loadData = async () => {
+            const currentWeights = await LearningEngine.getCurrentWeights();
+            setWeights(currentWeights);
+            const currentOutcomes = await TransferTracker.getOutcomes();
+            setOutcomes(currentOutcomes);
+        };
+        loadData();
     }, []);
 
     const runSimulationBatch = async () => {
@@ -37,7 +42,7 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
         // Simulate a delay for UI feedback
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        const currentWeights = weights || LearningEngine.getCurrentWeights();
+        const currentWeights = weights || await LearningEngine.getCurrentWeights();
         const newOutcomes: TransferOutcome[] = [];
         const scenariosCount = 5;
 
@@ -83,7 +88,7 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
             const result = runSimulation(scenario, currentWeights, playerHistories, fixtures);
 
             if (result.transferIn && result.transferOut) {
-                const outcome = TransferTracker.recordOutcome({
+                const outcome = await TransferTracker.recordOutcome({
                     decisionId: `sim-${Date.now()}-${i}`,
                     actualPointsGained: result.pointsDiff,
                     weeksEvaluated: 3,
@@ -103,9 +108,10 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
 
         // 4. Train model
         if (newOutcomes.length > 0) {
-            const result = LearningEngine.trainModel();
+            const result = await LearningEngine.trainModel();
             setWeights(result.newWeights);
-            setOutcomes(TransferTracker.getOutcomes());
+            const updatedOutcomes = await TransferTracker.getOutcomes();
+            setOutcomes(updatedOutcomes);
 
             result.improvements.forEach(imp => {
                 setLogs(prev => [`[LEARNING] ${imp}`, ...prev]);
@@ -115,10 +121,11 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
         setIsTraining(false);
     };
 
-    const resetModel = () => {
-        LearningEngine.resetWeights();
-        TransferTracker.clearData();
-        setWeights(LearningEngine.getCurrentWeights());
+    const resetModel = async () => {
+        await LearningEngine.resetWeights();
+        await TransferTracker.clearData();
+        const defaultWeights = await LearningEngine.getCurrentWeights();
+        setWeights(defaultWeights);
         setOutcomes([]);
         setLogs(prev => ['Model reset to default', ...prev]);
     };
