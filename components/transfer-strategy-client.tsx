@@ -1,13 +1,17 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Brain, Info } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
 import { usePlayerDetail } from '@/components/player-detail-provider';
+import { LearningEngine, AlgorithmWeights } from '@/lib/ml-learning-engine';
 
 interface TransferStrategyClientProps {
   teams: Team[];
@@ -63,12 +67,24 @@ export function TransferStrategyClient({
   const [budgetFlexibility, setBudgetFlexibility] = useState(0); // -5 to +5 million
   const [considerRolling, setConsiderRolling] = useState(true); // Whether to consider banking transfers
 
+  // ML State
+  const [useML, setUseML] = useState(false);
+  const [mlWeights, setMlWeights] = useState<AlgorithmWeights | null>(null);
+
+  useEffect(() => {
+    const loadWeights = async () => {
+      const weights = await LearningEngine.getCurrentWeights();
+      setMlWeights(weights);
+    };
+    loadWeights();
+  }, []);
+
   // Get bank balance from manager info (last_deadline_bank is in tenths)
   const bankBalance = (managerInfo.last_deadline_bank || 0) / 10; // Convert to millions
 
   // Player detail modal
   const { selectPlayer } = usePlayerDetail();
-  
+
   // Debug: Test if click handler works
   const handlePlayerClick = (player: Player) => {
     console.log('Player clicked:', player.web_name);
@@ -101,26 +117,27 @@ export function TransferStrategyClient({
     const outTeam = getTeam(outPlayer.team)?.short_name || 'Unknown';
     const inTeam = getTeam(inPlayer.team)?.short_name || 'Unknown';
     const position = getPositionName(outPlayer.element_type);
-    
-    let explanation = '';
+
+    let explanation = `** Transfer Recommendation for Gameweek ${gameweek} **\n\n`;
+    explanation += `Selling ** ${outPlayer.web_name}** (${getTeam(outPlayer.team)?.short_name}) and buying ** ${inPlayer.web_name}** (${getTeam(inPlayer.team)?.short_name}).\n\n`;
 
     // Opening
-    explanation += `For Gameweek ${gameweek}, we recommend transferring out **${outPlayer.web_name}** (${outTeam}, ${position}) and bringing in **${inPlayer.web_name}** (${inTeam}, ${position}). `;
+    explanation += `For Gameweek ${gameweek}, we recommend transferring out ** ${outPlayer.web_name}** (${outTeam}, ${position}) and bringing in ** ${inPlayer.web_name}** (${inTeam}, ${position}).`;
 
     // Why transfer out
-    explanation += `\n\n**Why sell ${outPlayer.web_name}?** `;
-    
+    explanation += `\n\n ** Why sell ${outPlayer.web_name}?** `;
+
     if (transferOut.fixtureScore < 50) {
       const nextFixtures = transferOut.upcomingFixtures.slice(0, 3).join(', ');
-      explanation += `${outPlayer.web_name} faces a difficult run of fixtures (${nextFixtures}) with an average difficulty that makes returns unlikely. `;
+      explanation += `${outPlayer.web_name} faces a difficult run of fixtures(${nextFixtures}) with an average difficulty that makes returns unlikely. `;
     }
-    
+
     if (transferOut.formScore < 50) {
       explanation += `Their recent form has been concerning with only ${outPlayer.form} points per game over the last few weeks. `;
     }
-    
+
     if (transferOut.volatilityScore > 70 && volatilityPref < 40) {
-      explanation += `Additionally, as you're playing a stable strategy, ${outPlayer.web_name}'s high volatility (boom-or-bust nature) doesn't align with your risk appetite. `;
+      explanation += `Additionally, as you're playing a stable strategy, ${outPlayer.web_name}'s high volatility(boom - or - bust nature) doesn't align with your risk appetite. `;
     } else if (transferOut.volatilityScore < 30 && volatilityPref > 60) {
       explanation += `For your ambitious strategy, ${outPlayer.web_name} lacks the explosive ceiling needed to make significant gains. `;
     }
@@ -129,14 +146,14 @@ export function TransferStrategyClient({
 
     // Why transfer in
     explanation += `\n\n**Why buy ${inPlayer.web_name}?** `;
-    
+
     if (transferIn.fixtureScore > 70) {
       const nextFixtures = transferIn.upcomingFixtures.slice(0, 3).join(', ');
       explanation += `${inPlayer.web_name} has an excellent fixture run (${nextFixtures}) that presents strong opportunities for points. `;
     } else if (transferIn.fixtureScore > 55) {
       explanation += `${inPlayer.web_name} has a favorable fixture schedule ahead that should yield returns. `;
     }
-    
+
     if (transferIn.formScore > 70) {
       explanation += `They're in exceptional form, averaging ${inPlayer.form} points per game recently, with ${inPlayer.goals_scored} goals and ${inPlayer.assists} assists this season. `;
     } else if (transferIn.formScore > 55) {
@@ -151,13 +168,29 @@ export function TransferStrategyClient({
       explanation += `${inPlayer.web_name} offers a balanced profile - capable of big hauls while maintaining decent consistency. `;
     }
 
+    // Reasoning based on scores
+    if (transferIn.fixtureScore > transferOut.fixtureScore + 20) {
+      explanation += `**Fixtures:** ${inPlayer.web_name} has a significantly better run of games. `;
+    } else if (transferIn.formScore > transferOut.formScore + 20) {
+      explanation += `**Form:** ${inPlayer.web_name} is in much better form recently. `;
+    }
+
+    // Volatility/Risk profile
+    if (transferIn.volatilityScore > 60) {
+      explanation += `${inPlayer.web_name} is a high-variance pick with explosive potential. `;
+    } else if (transferIn.volatilityScore < 30) {
+      explanation += `${inPlayer.web_name} is a consistent, reliable points scorer. `;
+    } else if (transferIn.volatilityScore >= 40 && transferIn.volatilityScore <= 60) {
+      explanation += `${inPlayer.web_name} offers a balanced profile - capable of big hauls while maintaining decent consistency. `;
+    }
+
     // Value consideration
     const priceDiff = (inPlayer.now_cost - outPlayer.now_cost) / 10;
     const outPrice = outPlayer.now_cost / 10;
     const inPrice = inPlayer.now_cost / 10;
-    
+
     explanation += `\n\n**Price:** Selling ${outPlayer.web_name} (£${outPrice.toFixed(1)}m) and buying ${inPlayer.web_name} (£${inPrice.toFixed(1)}m) `;
-    
+
     if (Math.abs(priceDiff) < 0.1) {
       explanation += `is essentially cost-neutral. `;
     } else if (priceDiff > 0) {
@@ -177,8 +210,10 @@ export function TransferStrategyClient({
     // Score improvement
     const improvement = transferIn.score - transferOut.score;
     explanation += `\n\n**Overall Impact:** This transfer improves your squad's projected score by ${improvement.toFixed(1)} points, combining better fixtures (${transferIn.fixtureScore.toFixed(0)} vs ${transferOut.fixtureScore.toFixed(0)}), superior form (${transferIn.formScore.toFixed(0)} vs ${transferOut.formScore.toFixed(0)}), and `;
-    
-    if (volatilityPref > 60) {
+
+    if (useML) {
+      explanation += `optimized weighting from the ML model.`;
+    } else if (volatilityPref > 60) {
       explanation += `higher upside potential for your ambitious strategy.`;
     } else if (volatilityPref < 40) {
       explanation += `greater consistency for your stable strategy.`;
@@ -192,10 +227,10 @@ export function TransferStrategyClient({
   // Helper: Get player's upcoming fixtures
   const getUpcomingFixtures = (player: Player, gameweeksAhead: number) => {
     const upcoming: { opponent: string; difficulty: number; isHome: boolean; gameweek: number }[] = [];
-    
+
     for (let i = 1; i <= gameweeksAhead; i++) {
       const gw = currentGameweek + i;
-      const playerFixtures = fixtures.filter(f => 
+      const playerFixtures = fixtures.filter(f =>
         f.event === gw && (f.team_h === player.team || f.team_a === player.team)
       );
 
@@ -225,14 +260,14 @@ export function TransferStrategyClient({
     if (upcomingFixtures.length === 0) return 0;
 
     const avgDifficulty = upcomingFixtures.reduce((sum, f) => sum + f.difficulty, 0) / upcomingFixtures.length;
-    
+
     // Convert to score (easier fixtures = higher score)
     // Difficulty ranges from 2 (easiest) to 5 (hardest)
     const fixtureScore = ((5 - avgDifficulty) / 3) * 100;
-    
+
     // Bonus for home fixtures
     const homeBonus = upcomingFixtures.filter(f => f.isHome).length * 5;
-    
+
     return Math.min(100, fixtureScore + homeBonus);
   };
 
@@ -240,10 +275,10 @@ export function TransferStrategyClient({
   const calculateFormScore = (player: Player) => {
     const form = parseFloat(player.form);
     const ppg = parseFloat(player.points_per_game);
-    
+
     // Weight recent form more heavily
     const formScore = (form * 0.7 + ppg * 0.3) * 10;
-    
+
     return Math.min(100, formScore);
   };
 
@@ -258,10 +293,10 @@ export function TransferStrategyClient({
     const avg = gameweekPoints.reduce((sum: number, pts: number) => sum + pts, 0) / gameweekPoints.length;
     const variance = gameweekPoints.reduce((sum: number, pts: number) => sum + Math.pow(pts - avg, 2), 0) / gameweekPoints.length;
     const stdDev = Math.sqrt(variance);
-    
+
     // Normalize to 0-100 scale
     const volatilityScore = Math.min(100, (stdDev / avg) * 100);
-    
+
     return volatilityScore;
   };
 
@@ -270,24 +305,40 @@ export function TransferStrategyClient({
     const fixtureScore = calculateFixtureScore(player, gameweeksAhead);
     const formScore = calculateFormScore(player);
     const volatilityScore = calculateVolatility(player);
-    
-    // Weight volatility based on user preference
-    // Low preference (0) = prefer stable players (low volatility)
-    // High preference (100) = prefer volatile players (high volatility)
-    const volatilityWeight = volatilityPref / 100;
-    const stabilityWeight = 1 - volatilityWeight;
-    
-    const adjustedVolatilityScore = volatilityWeight * volatilityScore + stabilityWeight * (100 - volatilityScore);
-    
-    // Combined score with weights
-    const score = (
-      fixtureScore * 0.4 + 
-      formScore * 0.35 + 
-      adjustedVolatilityScore * 0.25
-    );
+
+    let score = 0;
+
+    if (useML && mlWeights) {
+      // Use ML Weights
+      // Normalize weights to ensure they sum to ~1.0 for the score components we have
+      // We have Fixture, Form, and Volatility (proxy for ICT/Stats)
+
+      const totalWeight = mlWeights.fixtureWeight + mlWeights.formWeight + mlWeights.ictWeight;
+      const wFixture = mlWeights.fixtureWeight / totalWeight;
+      const wForm = mlWeights.formWeight / totalWeight;
+      const wVol = mlWeights.ictWeight / totalWeight;
+
+      score = (
+        fixtureScore * wFixture +
+        formScore * wForm +
+        volatilityScore * wVol
+      );
+    } else {
+      // Traditional Logic
+      const volatilityWeight = volatilityPref / 100;
+      const stabilityWeight = 1 - volatilityWeight;
+
+      const adjustedVolatilityScore = volatilityWeight * volatilityScore + stabilityWeight * (100 - volatilityScore);
+
+      score = (
+        fixtureScore * 0.4 +
+        formScore * 0.35 +
+        adjustedVolatilityScore * 0.25
+      );
+    }
 
     const upcomingFixtures = getUpcomingFixtures(player, gameweeksAhead);
-    
+
     const reasoning: string[] = [];
     if (fixtureScore > 70) reasoning.push('Excellent fixtures');
     if (fixtureScore < 40) reasoning.push('Difficult fixtures');
@@ -310,14 +361,14 @@ export function TransferStrategyClient({
   // Generate transfer strategy
   const transferStrategy = useMemo(() => {
     const strategy: TransferRecommendation[] = [];
-    
+
     // Track virtual squad that evolves with recommendations
     let virtualSquad = [...squadPlayers];
     let virtualSquadIds = new Set(squadPlayers.map(p => p.id));
-    
+
     // Track free transfers available (starts with user input, can be rolled)
     let currentFreeTransfers = freeTransfersInput;
-    
+
     // Get current bank balance from manager info (in tenths)
     let virtualBank = (managerInfo.last_deadline_bank || 0) / 10; // Convert to millions
 
@@ -343,10 +394,10 @@ export function TransferStrategyClient({
         const playerPosition = squadScore.player.element_type;
         const sellingPrice = squadScore.player.now_cost / 10; // Convert to millions
         const availableFunds = virtualBank + sellingPrice + budgetFlexibility; // Total budget after selling + flexibility
-        
+
         // Score potential transfer targets (same position, not in squad, affordable)
         const positionTargets = allPlayers
-          .filter(p => 
+          .filter(p =>
             p.element_type === playerPosition && // SAME POSITION
             !virtualSquadIds.has(p.id) && // Not in current virtual squad
             p.minutes > 100 && // Has played
@@ -383,7 +434,7 @@ export function TransferStrategyClient({
       const baseImprovementThreshold = 15;
       const rollingThreshold = 25; // Higher threshold if considering rolling
       const improvementThreshold = (considerRolling && currentFreeTransfers === 1) ? rollingThreshold : baseImprovementThreshold;
-      
+
       if (bestTransferTarget && worstSquadPlayer && bestTransfer) {
         const improvement = bestTransfer.improvement;
         const priceDiff = (bestTransferTarget.player.now_cost - worstSquadPlayer.player.now_cost) / 10;
@@ -407,7 +458,7 @@ export function TransferStrategyClient({
           } else if (currentFreeTransfers === 2) {
             detailedExplanation += `This transfer uses 1 of your 2 free transfers. You can make another transfer without a points hit. `;
           }
-          
+
           // Add budget info
           if (priceDiff > 0) {
             detailedExplanation += `This transfer costs an additional £${priceDiff.toFixed(1)}m. `;
@@ -465,10 +516,10 @@ export function TransferStrategyClient({
           virtualSquad = virtualSquad.filter(p => p.id !== worstSquadPlayer.player.id);
           virtualSquad.push(bestTransferTarget.player);
           virtualSquadIds = new Set(virtualSquad.map(p => p.id));
-          
+
           // Update virtual bank
           virtualBank += priceDiff;
-          
+
           // Use 1 free transfer (reset to 1 for next week if this is the first gameweek)
           if (currentFreeTransfers === 2) {
             currentFreeTransfers = 1; // Used 1, still have 1 left
@@ -478,7 +529,7 @@ export function TransferStrategyClient({
         } else {
           // Consider rolling the transfer
           let holdExplanation = `**🏦 Rolling Transfer Recommended for Gameweek ${gameweek}**\n\n`;
-          
+
           if (considerRolling && currentFreeTransfers === 1) {
             holdExplanation += `Your squad is well-positioned and the best available transfer only offers a ${improvement.toFixed(1)} point improvement (below the threshold of ${improvementThreshold}). ` +
               `**Banking your free transfer** to have 2 FTs next gameweek allows you to:\n\n` +
@@ -487,7 +538,7 @@ export function TransferStrategyClient({
               `• Execute more complex transfer strategies\n\n` +
               `The best transfer option would be ${worstSquadPlayer.player.web_name} (score: ${worstSquadPlayer.score.toFixed(1)}) ` +
               `➡️ ${bestTransferTarget.player.web_name} (score: ${bestTransferTarget.score.toFixed(1)}), but waiting allows better opportunities.`;
-            
+
             // Bank the transfer (increase FT count to 2 for next week, max 2)
             currentFreeTransfers = Math.min(2, currentFreeTransfers + 1);
           } else {
@@ -600,6 +651,40 @@ export function TransferStrategyClient({
         </CardContent>
       </Card>
 
+      {/* ML Strategy Toggle */}
+      <Card className="mb-6 border-purple-500/20 bg-purple-50/10">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Brain className="h-5 w-5 text-purple-600" />
+              <CardTitle>ML Enhanced Strategy</CardTitle>
+            </div>
+            <Switch checked={useML} onCheckedChange={setUseML} />
+          </div>
+          <CardDescription>
+            Use the self-learning ML model to weight decision factors
+          </CardDescription>
+        </CardHeader>
+        {useML && (
+          <CardContent>
+            <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/10">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="h-4 w-4 text-purple-600" />
+                <h4 className="font-semibold text-purple-700 dark:text-purple-300 text-sm">Model Active</h4>
+              </div>
+              <div className="text-purple-600/90 dark:text-purple-400/90 text-xs">
+                The strategy is now using learned weights from historical simulations:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Form Weight: {(mlWeights?.formWeight ?? 0).toFixed(2)}</li>
+                  <li>Fixture Weight: {(mlWeights?.fixtureWeight ?? 0).toFixed(2)}</li>
+                  <li>ICT/Stats Weight: {(mlWeights?.ictWeight ?? 0).toFixed(2)}</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Risk Appetite Slider */}
       <Card>
         <CardHeader>
@@ -612,9 +697,9 @@ export function TransferStrategyClient({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
-                {volatilityPreference < 33 ? '🛡️ Stable (Conservative)' : 
-                 volatilityPreference < 67 ? '⚖️ Balanced' : 
-                 '🚀 Volatile (Ambitious)'}
+                {volatilityPreference < 33 ? '🛡️ Stable (Conservative)' :
+                  volatilityPreference < 67 ? '⚖️ Balanced' :
+                    '🚀 Volatile (Ambitious)'}
               </span>
               <span className="text-2xl font-bold text-primary">{volatilityPreference}</span>
             </div>
@@ -680,17 +765,17 @@ export function TransferStrategyClient({
                         <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-2">❌ TRANSFER OUT</p>
                           <div className="flex items-center justify-between">
-                          <div>
-                            <button
-                              onClick={() => rec.transferOut && handlePlayerClick(rec.transferOut.player)}
-                              className="font-semibold hover:text-primary hover:underline cursor-pointer text-left"
-                            >
-                              {rec.transferOut?.player.web_name}
-                            </button>
-                            <p className="text-sm text-muted-foreground">
-                              {rec.transferOut && getTeam(rec.transferOut.player.team)?.short_name} • {rec.transferOut && getPositionName(rec.transferOut.player.element_type)}
-                            </p>
-                          </div>
+                            <div>
+                              <button
+                                onClick={() => rec.transferOut && handlePlayerClick(rec.transferOut.player)}
+                                className="font-semibold hover:text-primary hover:underline cursor-pointer text-left"
+                              >
+                                {rec.transferOut?.player.web_name}
+                              </button>
+                              <p className="text-sm text-muted-foreground">
+                                {rec.transferOut && getTeam(rec.transferOut.player.team)?.short_name} • {rec.transferOut && getPositionName(rec.transferOut.player.element_type)}
+                              </p>
+                            </div>
                             <div className="text-right">
                               <p className="text-sm font-mono">£{rec.transferOut && (rec.transferOut.player.now_cost / 10).toFixed(1)}m</p>
                               <p className="text-xs text-muted-foreground">Score: {rec.transferOut && rec.transferOut.score.toFixed(1)}</p>
@@ -709,17 +794,17 @@ export function TransferStrategyClient({
                         <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
                           <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">✅ TRANSFER IN</p>
                           <div className="flex items-center justify-between">
-                          <div>
-                            <button
-                              onClick={() => rec.transferIn && handlePlayerClick(rec.transferIn.player)}
-                              className="font-semibold hover:text-primary hover:underline cursor-pointer text-left"
-                            >
-                              {rec.transferIn?.player.web_name}
-                            </button>
-                            <p className="text-sm text-muted-foreground">
-                              {rec.transferIn && getTeam(rec.transferIn.player.team)?.short_name} • {rec.transferIn && getPositionName(rec.transferIn.player.element_type)}
-                            </p>
-                          </div>
+                            <div>
+                              <button
+                                onClick={() => rec.transferIn && handlePlayerClick(rec.transferIn.player)}
+                                className="font-semibold hover:text-primary hover:underline cursor-pointer text-left"
+                              >
+                                {rec.transferIn?.player.web_name}
+                              </button>
+                              <p className="text-sm text-muted-foreground">
+                                {rec.transferIn && getTeam(rec.transferIn.player.team)?.short_name} • {rec.transferIn && getPositionName(rec.transferIn.player.element_type)}
+                              </p>
+                            </div>
                             <div className="text-right">
                               <p className="text-sm font-mono">£{rec.transferIn && (rec.transferIn.player.now_cost / 10).toFixed(1)}m</p>
                               <p className="text-xs text-green-600 dark:text-green-400">
@@ -758,7 +843,7 @@ export function TransferStrategyClient({
                                 <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                                   Option {altIdx + 2} - {alt.priority.toUpperCase()} Priority
                                 </p>
-                                
+
                                 {/* Alternative Transfer Out */}
                                 <div className="p-2 bg-red-50/50 dark:bg-red-950/10 rounded-lg text-sm">
                                   <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1">❌ OUT</p>
@@ -893,8 +978,8 @@ export function TransferStrategyClient({
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    Form: {rec.transferOut?.player.form} | 
-                                    PPG: {rec.transferOut?.player.points_per_game} | 
+                                    Form: {rec.transferOut?.player.form} |
+                                    PPG: {rec.transferOut?.player.points_per_game} |
                                     Total: {rec.transferOut?.player.total_points}
                                   </p>
                                 </div>
@@ -947,8 +1032,8 @@ export function TransferStrategyClient({
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    Form: {rec.transferIn?.player.form} | 
-                                    PPG: {rec.transferIn?.player.points_per_game} | 
+                                    Form: {rec.transferIn?.player.form} |
+                                    PPG: {rec.transferIn?.player.points_per_game} |
                                     Total: {rec.transferIn?.player.total_points}
                                   </p>
                                 </div>

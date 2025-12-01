@@ -1,11 +1,11 @@
 import { Player, Team, Fixture } from './fpl-api';
 import { HistoricalSeasonData, findHistoricalMatches } from './historical-data';
+import { AlgorithmWeights } from './ml-learning-engine';
 
 export interface OptimizationStrategy {
     timeHorizon: number; // -1 (short-term/form) to 1 (long-term/history)
     riskTolerance: number; // -1 (conservative/safe) to 1 (aggressive/risky)
 }
-
 export interface OptimizationSettings {
     budget: number;
     gameweeks: number; // 1 for Free Hit, >1 for Wildcard
@@ -14,6 +14,7 @@ export interface OptimizationSettings {
     historicalData: HistoricalSeasonData[];
     strategy?: OptimizationStrategy; // Optional strategy parameters
     chipType?: 'freehit' | 'wildcard' | 'bestteam';
+    weights?: AlgorithmWeights; // ML Weights
 }
 
 export interface XPBreakdown {
@@ -55,7 +56,8 @@ export function calculateExpectedPoints(
     fixtures: Fixture[],
     gameweeks: number,
     historicalData: HistoricalSeasonData[] = [],
-    strategy?: OptimizationStrategy
+    strategy?: OptimizationStrategy,
+    weights?: AlgorithmWeights
 ): { totalXP: number, breakdown: XPBreakdown } {
     let totalXP = 0;
     const playerTeam = player.team;
@@ -69,7 +71,6 @@ export function calculateExpectedPoints(
     // --- SCORING MODEL ---
 
     // 1. Recent Form (Last 30 days / 5 GWs approx)
-    // 'form' attribute in API is average points per game over last 30 days
     const recentForm = parseFloat(player.form);
 
     // 2. Season Form (Points Per Game)
@@ -88,49 +89,49 @@ export function calculateExpectedPoints(
         }
     }
 
-    // Calculate dynamic weights based on strategy timeHorizon
-    // timeHorizon: -1 (short-term) to 1 (long-term)
-    const timeHorizon = strategy?.timeHorizon ?? 0;
-
-    // Map timeHorizon to weights
-    // Short-term (-1): 70% recent, 20% season, 10% historical
-    // Balanced (0): 35% recent, 35% season, 30% historical
-    // Long-term (1): 15% recent, 30% season, 55% historical
-    let recentWeight = 0.35 - (timeHorizon * 0.275); // -1: 0.625, 0: 0.35, 1: 0.075
-    let seasonWeight = 0.35 - (timeHorizon * 0.05);  // -1: 0.40, 0: 0.35, 1: 0.30
-    let historyWeight = 0.30 + (timeHorizon * 0.325); // -1: -0.025, 0: 0.30, 1: 0.625
-
-    // Normalize weights to ensure they sum to 1.0
-    const totalWeight = recentWeight + seasonWeight + historyWeight;
-    recentWeight /= totalWeight;
-    seasonWeight /= totalWeight;
-    historyWeight /= totalWeight;
-
-    // Weighted Base Points
-    // If we have historical data, use it to stabilize the prediction
     let basePoints = 0;
     let confidenceScore = 0;
 
-    if (historicalMatchesCount > 10) {
-        // Player has history: Use dynamic weights
-        basePoints = (recentForm * recentWeight) + (seasonPPG * seasonWeight) + (historicalPPG * historyWeight);
+    if (weights) {
+        // --- ML MODEL LOGIC ---
+        // Use learned weights to balance Form vs Season
+        const wForm = weights.formWeight;
+        // We assume the remainder goes to Season PPG (ignoring history for simplicity in ML mode)
+        // Or we can split it. Let's give 80% of remainder to Season, 20% to History if available.
+        const remainder = 1 - wForm;
+        const wSeason = remainder * (historicalMatchesCount > 0 ? 0.8 : 1.0);
+        const wHistory = remainder * (historicalMatchesCount > 0 ? 0.2 : 0.0);
 
-        // Consistency Bonus: If historical PPG is high (> 4.5), boost slightly
-        if (historicalPPG > 4.5) basePoints += 0.5;
+        basePoints = (recentForm * wForm) + (seasonPPG * wSeason) + (historicalPPG * wHistory);
 
-        confidenceScore = 90; // High confidence with history
+        // ICT Index Bonus
+        const ict = parseFloat(player.ict_index);
+        basePoints += (ict * weights.ictWeight);
+
+        confidenceScore = 80; // ML model is confident
     } else {
-        // New player or lack of history: Rely more on recent form
-        // Adjust weights when no history available
-        const noHistoryRecentWeight = 0.60 - (timeHorizon * 0.10); // -1: 0.70, 0: 0.60, 1: 0.50
-        const noHistorySeasonWeight = 0.40 + (timeHorizon * 0.10); // -1: 0.30, 0: 0.40, 1: 0.50
+        // --- TRADITIONAL LOGIC ---
+        // Calculate dynamic weights based on strategy timeHorizon
+        const timeHorizon = strategy?.timeHorizon ?? 0;
 
-        basePoints = (recentForm * noHistoryRecentWeight) + (seasonPPG * noHistorySeasonWeight);
+        let recentWeight = 0.35 - (timeHorizon * 0.275);
+        let seasonWeight = 0.35 - (timeHorizon * 0.05);
+        let historyWeight = 0.30 + (timeHorizon * 0.325);
 
-        if (player.minutes > 500) {
-            confidenceScore = 70; // Moderate confidence if played enough this season
+        const totalWeight = recentWeight + seasonWeight + historyWeight;
+        recentWeight /= totalWeight;
+        seasonWeight /= totalWeight;
+        historyWeight /= totalWeight;
+
+        if (historicalMatchesCount > 10) {
+            basePoints = (recentForm * recentWeight) + (seasonPPG * seasonWeight) + (historicalPPG * historyWeight);
+            if (historicalPPG > 4.5) basePoints += 0.5;
+            confidenceScore = 90;
         } else {
-            confidenceScore = 40; // Low confidence for new/bench players
+            const noHistoryRecentWeight = 0.60 - (timeHorizon * 0.10);
+            const noHistorySeasonWeight = 0.40 + (timeHorizon * 0.10);
+            basePoints = (recentForm * noHistoryRecentWeight) + (seasonPPG * noHistorySeasonWeight);
+            confidenceScore = player.minutes > 500 ? 70 : 40;
         }
     }
 
@@ -138,24 +139,11 @@ export function calculateExpectedPoints(
     const riskTolerance = strategy?.riskTolerance ?? 0;
 
     if (riskTolerance < 0) {
-        // Conservative: Penalize low-confidence players
-        if (confidenceScore < 70) {
-            basePoints *= (1 + (riskTolerance * 0.3)); // Reduce up to 30% for low confidence
-        }
-        // Bonus for high minutes played (proven starters)
-        if (player.minutes > 1500) {
-            basePoints *= 1.05; // 5% bonus for nailed-on players
-        }
+        if (confidenceScore < 70) basePoints *= (1 + (riskTolerance * 0.3));
+        if (player.minutes > 1500) basePoints *= 1.05;
     } else if (riskTolerance > 0) {
-        // Aggressive: Boost high-upside players
-        // Reward players with high ceiling (good form even if inconsistent)
-        if (recentForm > seasonPPG * 1.2) {
-            basePoints *= (1 + (riskTolerance * 0.15)); // Up to 15% boost for in-form players
-        }
-        // Accept rotation risks if xP is high
-        if (player.minutes < 1000 && basePoints > 5) {
-            basePoints *= (1 + (riskTolerance * 0.1)); // Up to 10% boost for differential picks
-        }
+        if (recentForm > seasonPPG * 1.2) basePoints *= (1 + (riskTolerance * 0.15));
+        if (player.minutes < 1000 && basePoints > 5) basePoints *= (1 + (riskTolerance * 0.1));
     }
 
     // If player has no minutes, return 0 (unless high chance of playing)
@@ -173,15 +161,7 @@ export function calculateExpectedPoints(
     let injuryMultiplier = 1.0;
 
     if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined) {
-        // Apply multiplier based on chance of playing
-        // 100% -> 1.0
-        // 75% -> 0.75
-        // 50% -> 0.5
-        // 25% -> 0.25
-        // 0% -> 0.0
         injuryMultiplier = player.chance_of_playing_next_round / 100;
-
-        // If chance is 0, we can return early unless we want to keep them for bench
         if (injuryMultiplier === 0) {
             return {
                 totalXP: 0,
@@ -192,13 +172,8 @@ export function calculateExpectedPoints(
             };
         }
     } else if (player.news && player.news.length > 0) {
-        // If chance is null but there is news, it might be a new injury or suspension
-        // We should be conservative
-        // Check for keywords
         const lowerNews = player.news.toLowerCase();
         if (lowerNews.includes('suspended') || lowerNews.includes('injury') || lowerNews.includes('unavailable')) {
-            // Assume 0% if not specified but has bad news
-            // But sometimes news is "Expected back..."
             if (!lowerNews.includes('expected back') && !lowerNews.includes('available')) {
                 injuryMultiplier = 0;
             }
@@ -214,14 +189,6 @@ export function calculateExpectedPoints(
         const isHome = fixture.team_h === playerTeam;
         const difficulty = isHome ? fixture.team_h_difficulty : fixture.team_a_difficulty;
 
-        // Difficulty multiplier (easier = higher multiplier)
-        // Difficulty 1-5.
-        // 1 -> 1.25x (Was 1.3)
-        // 2 -> 1.15x (Was 1.2)
-        // 3 -> 1.0x
-        // 4 -> 0.85x (Was 0.9)
-        // 5 -> 0.7x (Was 0.8)
-        // Adjusted to be slightly more conservative on the high end but harsher on the low end
         let difficultyMultiplier = 1.0;
         if (difficulty === 1) difficultyMultiplier = 1.25;
         else if (difficulty === 2) difficultyMultiplier = 1.15;
@@ -229,16 +196,21 @@ export function calculateExpectedPoints(
         else if (difficulty === 4) difficultyMultiplier = 0.85;
         else if (difficulty >= 5) difficultyMultiplier = 0.7;
 
-        // Home advantage multiplier
-        // Reduced slightly: 1.1 -> 1.05
+        // Adjust Difficulty Multiplier based on ML Weights
+        if (weights) {
+            // If fixtureWeight is 0.3 (default), we keep it as is.
+            // If fixtureWeight is > 0.3, we amplify the effect.
+            // If fixtureWeight is < 0.3, we dampen the effect.
+            const defaultWeight = 0.3;
+            const factor = weights.fixtureWeight / defaultWeight;
+
+            // Apply factor to the deviation from 1.0
+            difficultyMultiplier = 1.0 + (difficultyMultiplier - 1.0) * factor;
+        }
+
         const homeMultiplier = isHome ? 1.05 : 0.95;
 
         let matchXP = basePoints * difficultyMultiplier * homeMultiplier;
-
-        // Removed flat bonuses to avoid double counting.
-        // The basePoints (PPG) already accounts for the player's average return (goals/CS).
-        // The multipliers scale this average based on fixture difficulty.
-
         totalXP += matchXP;
 
         avgDifficultyMultiplier += difficultyMultiplier;
