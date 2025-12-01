@@ -308,6 +308,7 @@ export function TransferStrategyClient({
     const volatilityScore = calculateVolatility(player);
 
     let score = 0;
+    const reasoning: string[] = [];
 
     if (useML && mlWeights) {
       // Use ML Weights
@@ -370,7 +371,6 @@ export function TransferStrategyClient({
 
     const upcomingFixtures = getUpcomingFixtures(player, gameweeksAhead);
 
-    const reasoning: string[] = [];
     if (fixtureScore > 70) reasoning.push('Excellent fixtures');
     if (fixtureScore < 40) reasoning.push('Difficult fixtures');
     if (formScore > 70) reasoning.push('Strong form');
