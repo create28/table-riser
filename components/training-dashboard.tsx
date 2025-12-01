@@ -121,6 +121,113 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
         setIsTraining(false);
     };
 
+    const runSeasonSimulation = async () => {
+        setIsTraining(true);
+        setLogs(prev => ['🚀 Starting full season simulation...', ...prev]);
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const currentWeights = weights || await LearningEngine.getCurrentWeights();
+
+        // Determine valid gameweek range
+        let maxGw = 1;
+        Object.values(playerHistories).forEach((h: any) => {
+            if (h.history && h.history.length > 0) {
+                const last = h.history[h.history.length - 1].round;
+                if (last > maxGw) maxGw = last;
+            }
+        });
+
+        const minStartGw = 4; // Need 3 weeks of history for form
+        const maxStartGw = Math.max(minStartGw, maxGw - 3); // Need 3 weeks for outcome evaluation
+        const scenariosPerGw = 5;
+
+        setLogs(prev => [`📊 Training from GW${minStartGw} to GW${maxStartGw} (${maxStartGw - minStartGw + 1} gameweeks)`, ...prev]);
+
+        let totalSimulations = 0;
+        let updatedWeights = currentWeights;
+
+        // Iterate through each gameweek
+        for (let gw = minStartGw; gw <= maxStartGw; gw++) {
+            const gwOutcomes: TransferOutcome[] = [];
+
+            // Run multiple scenarios for this gameweek
+            for (let i = 0; i < scenariosPerGw; i++) {
+                // Pick random team (15 players)
+                const availablePlayerIds = Object.keys(playerHistories).map(Number);
+                if (availablePlayerIds.length < 20) {
+                    setLogs(prev => ['⚠️ Error: Not enough player history data', ...prev]);
+                    break;
+                }
+
+                // Shuffle and pick 15
+                const shuffled = availablePlayerIds.sort(() => 0.5 - Math.random());
+                const teamIds = shuffled.slice(0, 15);
+                const marketIds = shuffled.slice(15);
+
+                const team = allPlayers.filter(p => teamIds.includes(p.id));
+                const market = allPlayers.filter(p => marketIds.includes(p.id));
+
+                const scenario: SimulationScenario = {
+                    gameweek: gw,
+                    team,
+                    market,
+                    budget: 1000
+                };
+
+                // Run Simulation
+                const result = runSimulation(scenario, updatedWeights, playerHistories, fixtures);
+
+                if (result.transferIn && result.transferOut) {
+                    const outcome = await TransferTracker.recordOutcome({
+                        decisionId: `season-sim-${gw}-${i}-${Date.now()}`,
+                        actualPointsGained: result.pointsDiff,
+                        weeksEvaluated: 3,
+                        successScore: result.success ? 100 : 0
+                    });
+
+                    if (outcome) {
+                        gwOutcomes.push(outcome);
+                        totalSimulations++;
+                    }
+                }
+            }
+
+            // Train model after each gameweek batch
+            if (gwOutcomes.length > 0) {
+                const trainingResult = await LearningEngine.trainModel();
+                updatedWeights = trainingResult.newWeights;
+
+                setLogs(prev => [
+                    `✅ GW${gw}: ${gwOutcomes.length} simulations completed. Model updated.`,
+                    ...prev
+                ]);
+            } else {
+                setLogs(prev => [`⚠️ GW${gw}: No suitable transfers found`, ...prev]);
+            }
+
+            // Update UI periodically
+            if (gw % 3 === 0) {
+                setWeights(updatedWeights);
+                const updatedOutcomes = await TransferTracker.getOutcomes();
+                setOutcomes(updatedOutcomes);
+            }
+        }
+
+        // Final update
+        setWeights(updatedWeights);
+        const finalOutcomes = await TransferTracker.getOutcomes();
+        setOutcomes(finalOutcomes);
+
+        setLogs(prev => [
+            `🎉 Season simulation complete! ${totalSimulations} total scenarios analyzed.`,
+            `📈 Model trained on ${maxStartGw - minStartGw + 1} gameweeks of historical data.`,
+            ...prev
+        ]);
+
+        setIsTraining(false);
+    };
+
     const resetModel = async () => {
         await LearningEngine.resetWeights();
         await TransferTracker.clearData();
@@ -199,6 +306,18 @@ export function TrainingDashboard({ allPlayers, teams, fixtures, playerHistories
                             {isTraining ? 'Training...' : (
                                 <>
                                     <Play className="mr-2 h-4 w-4" /> Run Simulation (5 Batches)
+                                </>
+                            )}
+                        </Button>
+
+                        <Button
+                            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                            onClick={runSeasonSimulation}
+                            disabled={isTraining}
+                        >
+                            {isTraining ? 'Training...' : (
+                                <>
+                                    <Brain className="mr-2 h-4 w-4" /> Train Season (GW 1-Current)
                                 </>
                             )}
                         </Button>
