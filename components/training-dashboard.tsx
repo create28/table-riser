@@ -280,6 +280,51 @@ export function TrainingDashboard({
         setOutcomes([]);
         setLogs(prev => ['Model reset to default', ...prev]);
     };
+    const runMetricScout = async () => {
+        setIsScouting(true);
+        setLogs(prev => ['🔍 Starting Metric Scout analysis...', ...prev]);
+
+        // Allow UI to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            const results = MetricScout.analyzeCorrelations(allPlayers, playerHistories);
+            setCorrelations(results);
+            setLogs(prev => [`✅ Scout analysis complete. Found ${results.length} correlations.`, ...prev]);
+        } catch (e) {
+            console.error(e);
+            setLogs(prev => ['❌ Error running Metric Scout', ...prev]);
+        } finally {
+            setIsScouting(false);
+        }
+    };
+
+    const toggleMetric = async (metricId: string) => {
+        if (!weights) return;
+
+        const newWeights = { ...weights };
+        if (!newWeights.customWeights) newWeights.customWeights = {};
+
+        const isEnabled = newWeights.customWeights[metricId] !== undefined && newWeights.customWeights[metricId] > 0;
+
+        if (isEnabled) {
+            // Disable
+            delete newWeights.customWeights[metricId];
+            setLogs(prev => [`➖ Removed metric: ${metricId}`, ...prev]);
+        } else {
+            // Enable (start with low weight)
+            newWeights.customWeights[metricId] = 0.1;
+            setLogs(prev => [`➕ Added metric: ${metricId} to model`, ...prev]);
+        }
+
+        // Save to LocalStorage
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('fpl_custom_weights', JSON.stringify(newWeights.customWeights));
+        }
+
+        // Update state
+        setWeights(newWeights);
+    };
 
     if (!weights) return <div>Loading...</div>;
 
@@ -324,6 +369,20 @@ export function TrainingDashboard({
                             </div>
                             <Progress value={weights.priceWeight * 100} className="h-2" />
                         </div>
+
+                        {/* Custom Metrics */}
+                        {weights.customWeights && Object.entries(weights.customWeights).map(([key, val]) => {
+                            const metricName = AVAILABLE_METRICS.find(m => m.id === key)?.name || key;
+                            return (
+                                <div key={key} className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-purple-600 font-medium">{metricName}</span>
+                                        <span className="font-mono">{(val * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <Progress value={val * 100} className="h-2 bg-purple-100" indicatorClassName="bg-purple-600" />
+                                </div>
+                            );
+                        })}
                     </CardContent>
                 </Card>
 
@@ -367,6 +426,19 @@ export function TrainingDashboard({
                         </Button>
 
                         <Button
+                            variant="secondary"
+                            className="w-full"
+                            onClick={runMetricScout}
+                            disabled={isScouting}
+                        >
+                            {isScouting ? 'Scouting...' : (
+                                <>
+                                    <Search className="mr-2 h-4 w-4" /> Run Metric Scout
+                                </>
+                            )}
+                        </Button>
+
+                        <Button
                             variant="outline"
                             className="w-full text-red-600 hover:text-red-700"
                             onClick={resetModel}
@@ -396,6 +468,49 @@ export function TrainingDashboard({
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Metric Scout Results */}
+            {correlations.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>🔍 Metric Scout Report</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                Analysis of correlation between metrics and points. Higher correlation means better predictive power.
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {correlations.map(c => {
+                                    const isEnabled = weights?.customWeights?.[c.metricId] !== undefined;
+                                    return (
+                                        <div key={c.metricId} className="p-4 border rounded-lg flex flex-col justify-between bg-card hover:bg-accent/5 transition-colors">
+                                            <div>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h4 className="font-semibold">{c.name}</h4>
+                                                    <span className={`text-xs px-2 py-1 rounded-full ${c.correlation > 0.5 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                        Corr: {c.correlation.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mb-4">
+                                                    Based on {c.sampleSize} data points
+                                                </p>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant={isEnabled ? "destructive" : "default"}
+                                                onClick={() => toggleMetric(c.metricId)}
+                                            >
+                                                {isEnabled ? 'Remove from Model' : 'Add to Model'}
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }
