@@ -37,6 +37,20 @@ export const LearningEngine = {
                 weights.ictWeight = data[0].ict_weight;
                 weights.priceWeight = data[0].price_weight;
             }
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback for Core Weights
+            const stored = localStorage.getItem('fpl_core_weights');
+            if (stored) {
+                try {
+                    const core = JSON.parse(stored);
+                    weights.formWeight = core.formWeight;
+                    weights.fixtureWeight = core.fixtureWeight;
+                    weights.ictWeight = core.ictWeight;
+                    weights.priceWeight = core.priceWeight;
+                } catch (e) {
+                    console.error('Failed to parse core weights', e);
+                }
+            }
         }
 
         // 2. Get Custom Weights from LocalStorage (Client-side only)
@@ -58,27 +72,29 @@ export const LearningEngine = {
     resetWeights: async () => {
         if (typeof window !== 'undefined') {
             localStorage.removeItem('fpl_custom_weights');
+            localStorage.removeItem('fpl_core_weights');
         }
 
-        if (!supabase) return;
-        // Deactivate all current weights
-        await supabase
-            .from('fpl_weights')
-            .update({ active: false })
-            .eq('active', true);
+        if (supabase) {
+            // Deactivate all current weights
+            await supabase
+                .from('fpl_weights')
+                .update({ active: false })
+                .eq('active', true);
 
-        // Insert default
-        const { error } = await supabase
-            .from('fpl_weights')
-            .insert({
-                form_weight: DEFAULT_WEIGHTS.formWeight,
-                fixture_weight: DEFAULT_WEIGHTS.fixtureWeight,
-                ict_weight: DEFAULT_WEIGHTS.ictWeight,
-                price_weight: DEFAULT_WEIGHTS.priceWeight,
-                active: true
-            });
+            // Insert default
+            const { error } = await supabase
+                .from('fpl_weights')
+                .insert({
+                    form_weight: DEFAULT_WEIGHTS.formWeight,
+                    fixture_weight: DEFAULT_WEIGHTS.fixtureWeight,
+                    ict_weight: DEFAULT_WEIGHTS.ictWeight,
+                    price_weight: DEFAULT_WEIGHTS.priceWeight,
+                    active: true
+                });
 
-        if (error) console.error('Error resetting weights:', error);
+            if (error) console.error('Error resetting weights:', error);
+        }
     },
 
     // Train the model based on recorded outcomes
@@ -164,6 +180,14 @@ export const LearningEngine = {
                     price_weight: newWeights.priceWeight,
                     active: true
                 });
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback for Core Weights
+            localStorage.setItem('fpl_core_weights', JSON.stringify({
+                formWeight: newWeights.formWeight,
+                fixtureWeight: newWeights.fixtureWeight,
+                ictWeight: newWeights.ictWeight,
+                priceWeight: newWeights.priceWeight
+            }));
         }
 
         // Save Custom Weights to LocalStorage

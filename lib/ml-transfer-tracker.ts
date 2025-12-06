@@ -37,23 +37,29 @@ export const TransferTracker = {
         };
 
         // Save to Supabase
-        if (!supabase) return newDecision;
-        const { error } = await supabase
-            .from('fpl_decisions')
-            .insert({
-                id: newDecision.id,
-                gameweek: newDecision.gameweek,
-                team_id: newDecision.teamId,
-                player_out_id: newDecision.playerOut.id,
-                player_in_id: newDecision.playerIn.id,
-                player_out_name: newDecision.playerOut.web_name,
-                player_in_name: newDecision.playerIn.web_name,
-                reasoning: newDecision.reasoning,
-                status: 'pending'
-            });
+        if (supabase) {
+            const { error } = await supabase
+                .from('fpl_decisions')
+                .insert({
+                    id: newDecision.id,
+                    gameweek: newDecision.gameweek,
+                    team_id: newDecision.teamId,
+                    player_out_id: newDecision.playerOut.id,
+                    player_in_id: newDecision.playerIn.id,
+                    player_out_name: newDecision.playerOut.web_name,
+                    player_in_name: newDecision.playerIn.web_name,
+                    reasoning: newDecision.reasoning,
+                    status: 'pending'
+                });
 
-        if (error) {
-            console.error('Error tracking decision:', error);
+            if (error) console.error('Error tracking decision:', error);
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback
+            const decisions = JSON.parse(localStorage.getItem('fpl_decisions') || '[]');
+            decisions.unshift(newDecision);
+            // Keep last 1000 to avoid quota issues
+            if (decisions.length > 1000) decisions.length = 1000;
+            localStorage.setItem('fpl_decisions', JSON.stringify(decisions));
         }
 
         return newDecision;
@@ -61,30 +67,33 @@ export const TransferTracker = {
 
     // Get all decisions
     getDecisions: async (): Promise<TransferDecision[]> => {
-        if (!supabase) return [];
-        const { data, error } = await supabase
-            .from('fpl_decisions')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .range(0, 9999);
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('fpl_decisions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(0, 9999);
 
-        if (error) {
-            console.error('Error fetching decisions:', error);
-            return [];
+            if (error) {
+                console.error('Error fetching decisions:', error);
+                return [];
+            }
+
+            return data.map((d: any) => ({
+                id: d.id,
+                gameweek: d.gameweek,
+                teamId: d.team_id,
+                playerOut: { id: d.player_out_id, web_name: d.player_out_name } as Player,
+                playerIn: { id: d.player_in_id, web_name: d.player_in_name } as Player,
+                reasoning: d.reasoning,
+                timestamp: new Date(d.created_at).getTime(),
+                status: d.status
+            }));
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback
+            return JSON.parse(localStorage.getItem('fpl_decisions') || '[]');
         }
-
-        // Map back to our interface (simplified, as we don't store full player objects in DB)
-        // We reconstruct minimal player objects for the interface
-        return data.map((d: any) => ({
-            id: d.id,
-            gameweek: d.gameweek,
-            teamId: d.team_id,
-            playerOut: { id: d.player_out_id, web_name: d.player_out_name } as Player,
-            playerIn: { id: d.player_in_id, web_name: d.player_in_name } as Player,
-            reasoning: d.reasoning,
-            timestamp: new Date(d.created_at).getTime(),
-            status: d.status
-        }));
+        return [];
     },
 
     // Record an outcome for a decision
@@ -94,30 +103,44 @@ export const TransferTracker = {
             timestamp: Date.now()
         };
 
-        // Save Outcome
-        if (!supabase) return newOutcome;
-        const { error: outcomeError } = await supabase
-            .from('fpl_outcomes')
-            .insert({
-                decision_id: outcome.decisionId,
-                actual_points_gained: outcome.actualPointsGained,
-                weeks_evaluated: outcome.weeksEvaluated,
-                success_score: outcome.successScore
-            });
+        if (supabase) {
+            // Save Outcome
+            const { error: outcomeError } = await supabase
+                .from('fpl_outcomes')
+                .insert({
+                    decision_id: outcome.decisionId,
+                    actual_points_gained: outcome.actualPointsGained,
+                    weeks_evaluated: outcome.weeksEvaluated,
+                    success_score: outcome.successScore
+                });
 
-        if (outcomeError) {
-            console.error('Error recording outcome:', outcomeError);
-            return null;
-        }
+            if (outcomeError) {
+                console.error('Error recording outcome:', outcomeError);
+                return null;
+            }
 
-        // Update Decision Status
-        const { error: updateError } = await supabase
-            .from('fpl_decisions')
-            .update({ status: 'evaluated' })
-            .eq('id', outcome.decisionId);
+            // Update Decision Status
+            const { error: updateError } = await supabase
+                .from('fpl_decisions')
+                .update({ status: 'evaluated' })
+                .eq('id', outcome.decisionId);
 
-        if (updateError) {
-            console.error('Error updating decision status:', updateError);
+            if (updateError) console.error('Error updating decision status:', updateError);
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback
+            const outcomes = JSON.parse(localStorage.getItem('fpl_outcomes') || '[]');
+            outcomes.unshift(newOutcome);
+            // Keep last 1000
+            if (outcomes.length > 1000) outcomes.length = 1000;
+            localStorage.setItem('fpl_outcomes', JSON.stringify(outcomes));
+
+            // Update local decision status
+            const decisions = JSON.parse(localStorage.getItem('fpl_decisions') || '[]');
+            const index = decisions.findIndex((d: TransferDecision) => d.id === outcome.decisionId);
+            if (index !== -1) {
+                decisions[index].status = 'evaluated';
+                localStorage.setItem('fpl_decisions', JSON.stringify(decisions));
+            }
         }
 
         return newOutcome;
@@ -125,29 +148,38 @@ export const TransferTracker = {
 
     // Get all outcomes
     getOutcomes: async (): Promise<TransferOutcome[]> => {
-        if (!supabase) return [];
-        const { data, error } = await supabase
-            .from('fpl_outcomes')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .range(0, 9999);
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('fpl_outcomes')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(0, 9999);
 
-        if (error) {
-            console.error('Error fetching outcomes:', error);
-            return [];
+            if (error) {
+                console.error('Error fetching outcomes:', error);
+                return [];
+            }
+
+            return data.map((d: any) => ({
+                decisionId: d.decision_id,
+                actualPointsGained: d.actual_points_gained,
+                weeksEvaluated: d.weeks_evaluated,
+                successScore: d.success_score,
+                timestamp: new Date(d.created_at).getTime()
+            }));
+        } else if (typeof window !== 'undefined') {
+            // LocalStorage Fallback
+            return JSON.parse(localStorage.getItem('fpl_outcomes') || '[]');
         }
-
-        return data.map((d: any) => ({
-            decisionId: d.decision_id,
-            actualPointsGained: d.actual_points_gained,
-            weeksEvaluated: d.weeks_evaluated,
-            successScore: d.success_score,
-            timestamp: new Date(d.created_at).getTime()
-        }));
+        return [];
     },
 
-    // Clear all data (Not implemented for Supabase to avoid accidental wipes)
+    // Clear all data
     clearData: async () => {
-        console.warn('Clear data not implemented for Supabase storage');
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('fpl_decisions');
+            localStorage.removeItem('fpl_outcomes');
+        }
+        // Not implemented for Supabase to avoid accidental wipes
     }
 };
