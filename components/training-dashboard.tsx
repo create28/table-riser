@@ -164,8 +164,8 @@ export function TrainingDashboard({
         });
 
         const minStartGw = 4; // Need 3 weeks of history for form
-        const maxStartGw = Math.max(minStartGw, maxGw - 3); // Need 3 weeks for outcome evaluation
-        const scenariosPerGw = 5;
+        const maxStartGw = Math.max(minStartGw, maxGw - 1); // Allow evaluating up to 1 week before
+        const scenariosPerGw = 50;
 
         setLogs(prev => [`📊 Training from GW${minStartGw} to GW${maxStartGw} (${maxStartGw - minStartGw + 1} gameweeks)`, ...prev]);
 
@@ -201,8 +201,11 @@ export function TrainingDashboard({
                     budget: 1000
                 };
 
+                // Determine evaluation period based on available history
+                const evaluationPeriod = Math.min(3, maxGw - gw);
+
                 // Run Simulation
-                const result = runSimulation(scenario, updatedWeights, playerHistories, fixtures);
+                const result = runSimulation(scenario, updatedWeights, playerHistories, fixtures, evaluationPeriod);
 
                 if (result.transferIn && result.transferOut) {
                     // 1. Track the decision first (saves to DB)
@@ -224,7 +227,7 @@ export function TrainingDashboard({
                     const outcome = await TransferTracker.recordOutcome({
                         decisionId: decision.id,
                         actualPointsGained: result.pointsDiff,
-                        weeksEvaluated: 3,
+                        weeksEvaluated: evaluationPeriod,
                         successScore: result.success ? 100 : 0
                     });
 

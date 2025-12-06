@@ -82,7 +82,8 @@ export function runSimulation(
     scenario: SimulationScenario,
     weights: AlgorithmWeights,
     playerHistories: { [key: number]: any },
-    fixtures: Fixture[]
+    fixtures: Fixture[],
+    evaluationPeriod: number = 3
 ): SimulationResult {
     const { gameweek, team, market, budget } = scenario;
 
@@ -131,8 +132,8 @@ export function runSimulation(
     }
 
     // 3. Evaluate Outcome
-    const actualPointsOut = calculateActualPoints(playerHistories[bestTransferOut.id], gameweek, 3);
-    const actualPointsIn = calculateActualPoints(playerHistories[bestTransferIn.id], gameweek, 3);
+    const actualPointsOut = calculateActualPoints(playerHistories[bestTransferOut.id], gameweek, evaluationPeriod);
+    const actualPointsIn = calculateActualPoints(playerHistories[bestTransferIn.id], gameweek, evaluationPeriod);
     const pointsDiff = actualPointsIn - actualPointsOut;
 
     return {

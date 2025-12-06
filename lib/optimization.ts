@@ -556,14 +556,43 @@ export function optimizeTeam(
     bench.push(...remainingOutfield);
 
     // 5. Captaincy
+    // Logic: Prioritize "Safe" players for Captain/Vice-Captain
+    // "Safe" = Played >= 75% of available minutes
+    // We infer available minutes from the current gameweek
+    const nextGW = fixtures[0]?.event || 1;
+    const weeksPassed = Math.max(0, nextGW - 1);
+
+    const isSafeCaptain = (p: PlayerWithXP) => {
+        // Early season: not enough data to judge rotation risk by minutes strictly
+        if (weeksPassed < 5) return true;
+
+        // Check for specific injury flag first (if < 75% chance, definitely unsafe)
+        if (p.chance_of_playing_next_round !== undefined && p.chance_of_playing_next_round !== null && p.chance_of_playing_next_round < 75) return false;
+
+        // Minutes check
+        const totalMinutesPossible = weeksPassed * 90;
+        const playedRatio = p.minutes / Math.max(90, totalMinutesPossible);
+
+        return playedRatio >= 0.75;
+    };
+
     const sortedStarters = [...starters].sort((a, b) => b.xP - a.xP);
-    const captain = sortedStarters[0];
-    const viceCaptain = sortedStarters[1];
+
+    // Find best Captain
+    let captain = sortedStarters.find(p => isSafeCaptain(p));
+    // Fallback: If no safe captain found, take highest xP
+    if (!captain) captain = sortedStarters[0];
+
+    // Find best VC (excluding captain)
+    const remainingForVC = sortedStarters.filter(p => p.id !== captain!.id);
+    let viceCaptain = remainingForVC.find(p => isSafeCaptain(p));
+    // Fallback
+    if (!viceCaptain) viceCaptain = remainingForVC[0];
 
     // Calculate formation string (not returned by OptimizedTeam, but useful for debugging/internal logic)
-    const finalDef = starters.filter(p => p.element_type === 2).length;
-    const finalMid = starters.filter(p => p.element_type === 3).length;
-    const finalFwd = starters.filter(p => p.element_type === 4).length;
+    // const finalDef = starters.filter(p => p.element_type === 2).length;
+    // const finalMid = starters.filter(p => p.element_type === 3).length;
+    // const finalFwd = starters.filter(p => p.element_type === 4).length;
 
     return {
         starters,
@@ -716,9 +745,28 @@ export function optimizeLineup(
     const bench = [benchGK, ...benchOutfield];
 
     // Captain and vice-captain: highest and second-highest xP among starters
+    // Logic: Prioritize "Safe" players for Captain/Vice-Captain
+    // "Safe" = Played >= 75% of available minutes
+    const nextGW = fixtures[0]?.event || 1;
+    const weeksPassed = Math.max(0, nextGW - 1);
+
+    const isSafeCaptain = (p: PlayerWithXP) => {
+        if (weeksPassed < 5) return true;
+        if (p.chance_of_playing_next_round !== undefined && p.chance_of_playing_next_round !== null && p.chance_of_playing_next_round < 75) return false;
+
+        const totalMinutesPossible = weeksPassed * 90;
+        const playedRatio = p.minutes / Math.max(90, totalMinutesPossible);
+        return playedRatio >= 0.75;
+    };
+
     const sortedStarters = [...starters].sort((a, b) => b.xP - a.xP);
-    const captain = sortedStarters[0];
-    const viceCaptain = sortedStarters[1];
+
+    let captain = sortedStarters.find(p => isSafeCaptain(p));
+    if (!captain) captain = sortedStarters[0];
+
+    const remainingForVC = sortedStarters.filter(p => p.id !== captain!.id);
+    let viceCaptain = remainingForVC.find(p => isSafeCaptain(p));
+    if (!viceCaptain) viceCaptain = remainingForVC[0];
 
     const formationString = `${bestFormation.def}-${bestFormation.mid}-${bestFormation.fwd}`;
     const totalExpectedPoints = starters.reduce((sum, p) => sum + p.xP, 0) + captain.xP; // Captain gets double

@@ -65,7 +65,8 @@ export const TransferTracker = {
         const { data, error } = await supabase
             .from('fpl_decisions')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .range(0, 9999);
 
         if (error) {
             console.error('Error fetching decisions:', error);
@@ -128,7 +129,8 @@ export const TransferTracker = {
         const { data, error } = await supabase
             .from('fpl_outcomes')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .range(0, 9999);
 
         if (error) {
             console.error('Error fetching outcomes:', error);

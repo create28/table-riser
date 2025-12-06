@@ -12,6 +12,8 @@ import { TransferSuggestions } from '@/components/transfer-suggestions';
 import { PlayerVsTeam } from '@/components/player-vs-team';
 import { PlayerVolatility } from '@/components/player-volatility';
 import { OptimizationTools } from '@/components/optimization-tools';
+import { OverperformersList } from '@/components/overperformers-list';
+
 import { UnderperformersList } from '@/components/underperformers-list';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PlayerPerformance } from '@/components/player-performance';
@@ -94,13 +96,35 @@ export function DashboardClient({
 
         {/* --- SCOUT TAB --- */}
         <TabsContent value="scout" className="space-y-4">
-          <UnderperformersList
-            allPlayers={allPlayers}
-            teams={teams}
-            fixtures={fixtures}
-            onPlayerClick={handlePlayerClick}
-            playerHistories={playerHistories}
-          />
+          <Tabs defaultValue="underperformers" className="w-full">
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="underperformers">Underperformers (Buy)</TabsTrigger>
+                <TabsTrigger value="overperformers">Overperformers (Sell)</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="underperformers">
+              <UnderperformersList
+                allPlayers={allPlayers}
+                teams={teams}
+                fixtures={fixtures}
+                onPlayerClick={handlePlayerClick}
+                playerHistories={playerHistories}
+              />
+            </TabsContent>
+
+            <TabsContent value="overperformers">
+              <OverperformersList
+                allPlayers={allPlayers}
+                teams={teams}
+                fixtures={fixtures}
+                onPlayerClick={handlePlayerClick}
+                playerHistories={playerHistories}
+              />
+            </TabsContent>
+          </Tabs>
+
           <div className="grid gap-4 md:grid-cols-2">
             <PlayerVsTeam
               players={players}
@@ -195,10 +219,10 @@ export function DashboardClient({
             </div>
           </div>
         </TabsContent>
-      </Tabs>
+      </Tabs >
 
       {/* Player Detail Modal */}
-      <PlayerDetailModal
+      < PlayerDetailModal
         player={selectedPlayer}
         team={selectedTeam}
         playerHistory={selectedPlayer ? playerHistories[selectedPlayer.id] : null}
