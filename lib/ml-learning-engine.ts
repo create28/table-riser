@@ -124,28 +124,36 @@ export const LearningEngine = {
         const successRate = successes.length / analyzedData.length;
 
         // 3. Evolution Logic
+        // 3. Evolution Logic
+        // Calculate dynamic learning rate based on sample size
+        // As outcomes grow, the perturbation magnitude should shrink (Annealing)
+        // Base rate starts at 0.4 (exploration) and decays to 0.05 (precision)
+        const learningRate = Math.max(0.05, 0.4 * Math.exp(-outcomes.length / 500));
+
         if (successRate < 0.4) {
             // Exploration (Large perturbation)
-            improvements.push(`Success rate low (${(successRate * 100).toFixed(0)}%). Exploring new strategies.`);
+            // If performing poorly, keep learning rate higher
+            const exploreRate = Math.max(0.2, learningRate * 1.5);
+            improvements.push(`Success rate low (${(successRate * 100).toFixed(0)}%). Increasing search space (Rate: ${exploreRate.toFixed(3)}).`);
 
-            newWeights.formWeight = perturb(currentWeights.formWeight, 0.4);
-            newWeights.fixtureWeight = perturb(currentWeights.fixtureWeight, 0.4);
+            newWeights.formWeight = perturb(currentWeights.formWeight, exploreRate);
+            newWeights.fixtureWeight = perturb(currentWeights.fixtureWeight, exploreRate);
 
             // Perturb custom weights too
             Object.keys(newWeights.customWeights).forEach(key => {
-                newWeights.customWeights![key] = perturb(newWeights.customWeights![key], 0.4);
+                newWeights.customWeights![key] = perturb(newWeights.customWeights![key], exploreRate);
             });
 
         } else {
             // Exploitation (Fine-tuning)
-            improvements.push(`Success rate good (${(successRate * 100).toFixed(0)}%). Fine-tuning strategy.`);
+            improvements.push(`Success rate good (${(successRate * 100).toFixed(0)}%). refining weights (Rate: ${learningRate.toFixed(3)}).`);
 
-            newWeights.formWeight = perturb(currentWeights.formWeight, 0.1);
-            newWeights.fixtureWeight = perturb(currentWeights.fixtureWeight, 0.1);
+            newWeights.formWeight = perturb(currentWeights.formWeight, learningRate);
+            newWeights.fixtureWeight = perturb(currentWeights.fixtureWeight, learningRate);
 
             // Perturb custom weights too
             Object.keys(newWeights.customWeights).forEach(key => {
-                newWeights.customWeights![key] = perturb(newWeights.customWeights![key], 0.1);
+                newWeights.customWeights![key] = perturb(newWeights.customWeights![key], learningRate);
             });
         }
 

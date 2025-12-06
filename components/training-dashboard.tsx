@@ -470,6 +470,45 @@ export function TrainingDashboard({
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Insights Summary */}
+                <Card className="md:col-span-3">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Search className="h-5 w-5 text-indigo-600" />
+                            Model Insights
+                        </CardTitle>
+                        <CardDescription>What the AI has learned from {outcomes.length} simulations</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <h4 className="font-semibold text-sm">Key Findings</h4>
+                                <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                                    <li>
+                                        Current strategy heavily favors <strong>{weights.formWeight > weights.fixtureWeight ? 'Recent Form' : 'Upcoming Fixtures'}</strong>
+                                        {' '}as the primary predictor of points.
+                                    </li>
+                                    <li>
+                                        The model assigns a <strong>{(weights.priceWeight * 100).toFixed(0)}% importance</strong> to Player Value,
+                                        suggesting {weights.priceWeight > 0.1 ? 'budget management is critical' : 'expensive premiums are worth the cost'}.
+                                    </li>
+                                    <li>
+                                        Based on {outcomes.length} scenarios, the AI has stabilized its learning rate to approx <strong>{Math.max(0.05, 0.4 * Math.exp(-outcomes.length / 500)).toFixed(3)}</strong> to refine accuracy.
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2">
+                                <h4 className="font-semibold text-sm">Strategic Recommendation</h4>
+                                <p className="text-sm text-muted-foreground">
+                                    {weights.formWeight > 0.4
+                                        ? "Focus on transferring in players who have delivered returns in the last 3-4 gameweeks, even if their upcoming fixtures look tough. Form is the dominant factor."
+                                        : "Prioritize players with green fixtures. The simulation indicates that 'easy' games are more reliable for points returns than recent hot streaks."}
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Metric Scout Results */}
