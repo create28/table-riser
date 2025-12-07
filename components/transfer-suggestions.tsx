@@ -74,10 +74,10 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
           <div>
             <CardTitle className="flex items-center gap-2">
               <Trophy className="h-5 w-5 text-yellow-500" />
-              Transfer Strategy
+              Transfer Strategy (xP Model)
             </CardTitle>
             <CardDescription>
-              Ranked moves based on Net Score (Points Gain - Hit Costs).
+              Ranked moves based on Net Expected Points (xP) Gain - Hit Costs.
             </CardDescription>
           </div>
 
@@ -124,8 +124,8 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                     <Badge variant={rec.type === 'double' ? 'secondary' : 'default'} className="mb-1">
                       {rec.type === 'double' ? 'Double Move' : 'Single Move'}
                     </Badge>
-                    <div className="text-2xl font-bold text-green-600">+{rec.netScore.toFixed(0)}</div>
-                    <div className="text-xs text-muted-foreground">Net Score</div>
+                    <div className="text-2xl font-bold text-green-600">+{rec.netScore.toFixed(1)}</div>
+                    <div className="text-xs text-muted-foreground">Net xP</div>
                     {rec.transferCost > 0 && <Badge variant="destructive" className="text-[10px] h-4 px-1">- {rec.transferCost} Hit Cost</Badge>}
                   </div>
 
@@ -173,7 +173,7 @@ export function TransferSuggestions({ currentPlayers, allPlayers, teams, fixture
                       : <span className="text-orange-600 font-medium">Costs £{(Math.abs(rec.netBudget) / 10).toFixed(1)}m</span>
                     }
                   </span>
-                  <span>Raw Gain: {rec.scoreGain.toFixed(0)} pts</span>
+                  <span>xP Gain: {rec.scoreGain.toFixed(1)} pts</span>
                 </div>
               </Card>
             ))}

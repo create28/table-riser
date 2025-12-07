@@ -1,6 +1,7 @@
 
 import { Player, Fixture } from './fpl-api';
 import { AlgorithmWeights, DEFAULT_WEIGHTS } from './ml-learning-engine';
+import { calculateExpectedPoints } from './optimization';
 
 export interface TransferCandidate {
     player: Player;
@@ -397,9 +398,12 @@ export function getTopStrategicMoves(
 
     // Get best INs (pre-fetched top lists to optimize)
     const topTargetsByPos: { [pos: number]: Player[] } = {};
+    const currentPlayerIds = new Set(currentPlayers.map(p => p.id));
+    const availablePlayers = allPlayers.filter(p => !currentPlayerIds.has(p.id));
+
     [1, 2, 3, 4].forEach(pos => {
         // Budget is dynamic per move, so we just get the absolute best players generally
-        topTargetsByPos[pos] = getTransferInCandidates(allPlayers, fixtures, pos, 2000, undefined, false, weights)
+        topTargetsByPos[pos] = getTransferInCandidates(availablePlayers, fixtures, pos, 2000, undefined, false, weights)
             .slice(0, 20)
             .map(c => c.player);
     });
@@ -411,14 +415,19 @@ export function getTopStrategicMoves(
 
         // Take top 3 suitable replacements per OUT to avoid spamming
         targets.slice(0, 3).forEach(inPlayer => {
-            const outScore = outCand.score; // Higher is "worse" for player, so selling them is good. We treat this as "Points gained by removing bad player"
-            const inCand = calculateTransferInScore(inPlayer, fixtures, undefined, false, weights); // Re-calc exact score
+            // STRATEGY TAB LOGIC (XP Model) integration:
+            // Instead of Heuristic Scores (0-100), we calculate Projected Points (xP) for next 3 GWs.
+            // This is "Better Options" because it accounts for fixtures, ppg, form, and difficulty accurately.
+            // We assume heuristic filtered candidates are good "leads", now we qualify them with xP.
 
-            // Note: Our scores are heuristic (0-100 scale), not strictly "Predicted Points". 
-            // We sum them: Improvement = (InScore - avg) + (OutScore - avg). 
-            // Heuristic: OutScore is "how bad they are". InScore is "how good they are".
-            // Total Gain ~ InScore + OutScore.
-            const rawGain = inCand.score + outScore;
+            const outXP = calculateExpectedPoints(out, fixtures, 3, [], undefined, weights).totalXP;
+            const inXP = calculateExpectedPoints(inPlayer, fixtures, 3, [], undefined, weights).totalXP;
+
+            // Gain is the IMPROVEMENT in points
+            const xPGain = inXP - outXP;
+
+            // Filter out moves with negligible or negative gain
+            if (xPGain < 0.5) return;
 
             const cost = freeTransfers >= 1 ? 0 : 4;
 
@@ -426,9 +435,9 @@ export function getTopStrategicMoves(
                 type: 'single',
                 playersOut: [out],
                 playersIn: [inPlayer],
-                scoreGain: rawGain,
+                scoreGain: xPGain,
                 transferCost: cost,
-                netScore: rawGain - (cost * 5), // Weight hit cost x5 because heuristics are 0-100 scale, but hits are real points.
+                netScore: xPGain - cost, // Direct subtraction: xP Gain - Cost
                 netBudget: out.now_cost - inPlayer.now_cost
             });
         });
@@ -436,18 +445,31 @@ export function getTopStrategicMoves(
 
 
     // 2. Double Transfers
-    const doubleRecs = getDoubleTransferRecommendations(currentPlayers, allPlayers, fixtures, bank, 10);
+    // Re-score doubles with xP if possible, or assume heuristics for now (Double logic is complex)
+    // For now, let's keep Double logic heuristic but scale it to look like xP? 
+    // Or better, let's just apply the same xP calculation to the found pairs.
+    const doubleRecs = getDoubleTransferRecommendations(currentPlayers, allPlayers, fixtures, bank, 20); // Get more candidates
     doubleRecs.forEach(rec => {
+        // Recalculate with xP
+        const out1XP = calculateExpectedPoints(rec.out1, fixtures, 3, [], undefined, weights).totalXP;
+        const out2XP = calculateExpectedPoints(rec.out2, fixtures, 3, [], undefined, weights).totalXP;
+        const in1XP = calculateExpectedPoints(rec.in1, fixtures, 3, [], undefined, weights).totalXP;
+        const in2XP = calculateExpectedPoints(rec.in2, fixtures, 3, [], undefined, weights).totalXP;
+
+        const xPGain = (in1XP + in2XP) - (out1XP + out2XP);
+
+        if (xPGain < 1.0) return;
+
         const cost = Math.max(0, 2 - freeTransfers) * 4;
 
         moves.push({
             type: 'double',
             playersOut: [rec.out1, rec.out2],
             playersIn: [rec.in1, rec.in2],
-            scoreGain: rec.scoreGain,
+            scoreGain: xPGain,
             transferCost: cost,
-            netScore: rec.scoreGain - (cost * 5), // Weight hits same as above
-            netBudget: rec.netCost * -1 // netCost in Rec is (In - Out), so negative of that is budget change (Savings)
+            netScore: xPGain - cost,
+            netBudget: rec.netCost * -1
         });
     });
 
