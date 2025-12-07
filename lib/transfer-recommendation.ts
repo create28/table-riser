@@ -1,5 +1,6 @@
 
 import { Player, Fixture } from './fpl-api';
+import { AlgorithmWeights, DEFAULT_WEIGHTS } from './ml-learning-engine';
 
 export interface TransferCandidate {
     player: Player;
@@ -50,9 +51,9 @@ export function getBestTransfer(
     };
 }
 
-export function getTransferOutCandidates(players: Player[], fixtures: Fixture[]): TransferCandidate[] {
+export function getTransferOutCandidates(players: Player[], fixtures: Fixture[], weights?: AlgorithmWeights): TransferCandidate[] {
     return players
-        .map(p => calculateTransferOutScore(p, fixtures))
+        .map(p => calculateTransferOutScore(p, fixtures, weights))
         .sort((a, b) => b.score - a.score);
 }
 
@@ -62,36 +63,48 @@ export function getTransferInCandidates(
     position: number,
     budget: number,
     playerHistories?: { [key: number]: any },
-    avoidRotationRisk: boolean = false
+    avoidRotationRisk: boolean = false,
+    weights?: AlgorithmWeights
 ): TransferCandidate[] {
     return players
         .filter(p => p.element_type === position && p.now_cost <= budget && p.minutes >= 300)
-        .map(p => calculateTransferInScore(p, fixtures, playerHistories, avoidRotationRisk))
+        .map(p => calculateTransferInScore(p, fixtures, playerHistories, avoidRotationRisk, weights))
         .sort((a, b) => b.score - a.score);
 }
 
-function calculateTransferOutScore(player: Player, fixtures: Fixture[]): TransferCandidate {
+function calculateTransferOutScore(player: Player, fixtures: Fixture[], weights: AlgorithmWeights = DEFAULT_WEIGHTS): TransferCandidate {
     let score = 0;
     const reasons: string[] = [];
-    const breakdown = { form: 0, fixtures: 0, value: 0, ict: 0, xg: 0, trends: 0 };
+    const breakdown = { form: 0, fixtures: 0, value: 0, ict: 0, xg: 0, trends: 0, custom: {} };
+
+    // Multipliers based on ML weights (relative to default)
+    // If model learns form is more important (e.g. 0.8 vs 0.5), we boost form score by 1.6x
+    const wForm = weights.formWeight / DEFAULT_WEIGHTS.formWeight;
+    const wFixtures = weights.fixtureWeight / DEFAULT_WEIGHTS.fixtureWeight;
+    const wValue = weights.priceWeight / DEFAULT_WEIGHTS.priceWeight;
+    // ICT and xG share the ictWeight for now as "stats"
+    const wStats = weights.ictWeight / DEFAULT_WEIGHTS.ictWeight;
 
     // 1. Form (Recent performance)
     const form = parseFloat(player.form);
     if (form < 3.0) {
-        score += 20;
-        breakdown.form += 20;
+        const pts = 20 * wForm;
+        score += pts;
+        breakdown.form += pts;
         reasons.push(`Poor form (${form})`);
     } else if (form < 4.0) {
-        score += 10;
-        breakdown.form += 10;
+        const pts = 10 * wForm;
+        score += pts;
+        breakdown.form += pts;
         reasons.push('Below average form');
     }
 
     // 2. Value Efficiency (Points per million)
     const pointsPerMillion = player.total_points > 0 ? (player.total_points / (player.now_cost / 10)) : 0;
     if (pointsPerMillion < 12) {
-        score += 15;
-        breakdown.value += 15;
+        const pts = 15 * wValue;
+        score += pts;
+        breakdown.value += pts;
         reasons.push('Poor value for money');
     }
 
@@ -100,16 +113,18 @@ function calculateTransferOutScore(player: Player, fixtures: Fixture[]): Transfe
     const avgDifficulty = calculateAvgDifficulty(upcomingFixtures, player);
 
     if (avgDifficulty >= 4) {
-        score += 15;
-        breakdown.fixtures += 15;
+        const pts = 15 * wFixtures;
+        score += pts;
+        breakdown.fixtures += pts;
         reasons.push('Very tough fixtures ahead');
     } else if (avgDifficulty >= 3.5) {
-        score += 8;
-        breakdown.fixtures += 8;
+        const pts = 8 * wFixtures;
+        score += pts;
+        breakdown.fixtures += pts;
         reasons.push('Difficult fixtures');
     }
 
-    // 4. Injury / Availability
+    // 4. Injury / Availability (NOT WEIGHTED - Fundamental Constraint)
     if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined && player.chance_of_playing_next_round < 100) {
         if (player.chance_of_playing_next_round === 0) {
             score += 50;
@@ -123,23 +138,16 @@ function calculateTransferOutScore(player: Player, fixtures: Fixture[]): Transfe
         }
     }
 
-    // 5. Market Trends (Transfers Out)
+    // 5. Market Trends (Transfers Out) - Partially form/popularity
     const transfersOut = player.transfers_out_event;
     if (transfersOut > 50000) {
-        score += 10;
-        breakdown.trends += 10;
+        const pts = 10 * wForm; // Trends often correlate with form
+        score += pts;
+        breakdown.trends += pts;
         reasons.push('High transfers out');
     }
 
-    // 6. xG/xA Underperformance (if available)
-    if (player.expected_goal_involvements) {
-        const xGI = parseFloat(player.expected_goal_involvements);
-        const actualGI = player.goals_scored + player.assists;
-        if (xGI > actualGI + 2) {
-            // Actually this might mean they are unlucky, but for transfer OUT we usually look for overperformance reverting to mean
-            // or just bad players. Let's stick to simple metrics for now.
-        }
-    }
+    // 6. xG/xA Underperformance (if available) - Removed as per instruction, was commented out.
 
     return { player, score, reasons, breakdown };
 }
@@ -148,84 +156,83 @@ function calculateTransferInScore(
     player: Player,
     fixtures: Fixture[],
     playerHistories?: { [key: number]: any },
-    avoidRotationRisk: boolean = false
+    avoidRotationRisk: boolean = false,
+    weights: AlgorithmWeights = DEFAULT_WEIGHTS
 ): TransferCandidate {
     let score = 0;
     const reasons: string[] = [];
-    const breakdown = { form: 0, fixtures: 0, value: 0, ict: 0, xg: 0, trends: 0 };
+    const breakdown = { form: 0, fixtures: 0, value: 0, ict: 0, xg: 0, trends: 0, custom: {} };
+
+    const wForm = weights.formWeight / DEFAULT_WEIGHTS.formWeight;
+    const wFixtures = weights.fixtureWeight / DEFAULT_WEIGHTS.fixtureWeight;
+    const wValue = weights.priceWeight / DEFAULT_WEIGHTS.priceWeight;
+    const wStats = weights.ictWeight / DEFAULT_WEIGHTS.ictWeight;
 
     // 1. Form (Weighted heavily)
     const form = parseFloat(player.form);
     if (form >= 6.0) {
-        score += 30;
-        breakdown.form += 30;
+        const pts = 30 * wForm;
+        score += pts;
+        breakdown.form += pts;
         reasons.push(`Excellent form (${form})`);
     } else if (form >= 5.0) {
-        score += 20;
-        breakdown.form += 20;
-        reasons.push('Great form');
-    } else if (form >= 4.0) {
-        score += 10;
-        breakdown.form += 10;
-        reasons.push('Good form');
+        const pts = 20 * wForm;
+        score += pts;
+        breakdown.form += pts;
+        reasons.push(`Strong form (${form})`);
+    } else if (form >= 3.5) {
+        const pts = 10 * wForm;
+        score += pts;
+        breakdown.form += pts;
     }
 
-    // 2. Fixture Difficulty (Next 5)
+    // 2. Fixtures (Next 5)
     const upcomingFixtures = getUpcomingFixtures(player, fixtures);
     const avgDifficulty = calculateAvgDifficulty(upcomingFixtures, player);
 
-    if (avgDifficulty <= 2.5) {
-        score += 25;
-        breakdown.fixtures += 25;
-        reasons.push('Very easy fixtures');
-    } else if (avgDifficulty <= 3.0) {
-        score += 15;
-        breakdown.fixtures += 15;
-        reasons.push('Favorable fixtures');
+    if (avgDifficulty <= 2.2) {
+        const pts = 25 * wFixtures;
+        score += pts;
+        breakdown.fixtures += pts;
+        reasons.push('Great run of fixtures');
+    } else if (avgDifficulty <= 2.8) {
+        const pts = 15 * wFixtures;
+        score += pts;
+        breakdown.fixtures += pts;
+        reasons.push('Good fixtures');
     }
 
-    // 3. Value Efficiency
+    // 3. Value
     const pointsPerMillion = player.total_points > 0 ? (player.total_points / (player.now_cost / 10)) : 0;
-    if (pointsPerMillion >= 25) {
-        score += 15;
-        breakdown.value += 15;
-        reasons.push('Great value');
-    } else if (pointsPerMillion >= 20) {
-        score += 10;
-        breakdown.value += 10;
-        reasons.push('Good value');
+    if (pointsPerMillion > 15) {
+        const pts = 10 * wValue;
+        score += pts;
+        breakdown.value += pts;
+        reasons.push('High value');
     }
 
-    // 4. Underlying Stats (ICT & xG/xA)
-    const ict = parseFloat(player.ict_index);
-    if (ict > 100) { // High ICT usually means good underlying stats
-        score += 10;
-        breakdown.ict += 10;
-        reasons.push('Strong underlying stats');
+    // 4. Underlying Stats (ICT / xG / xA)
+    const ictIndex = parseFloat(player.ict_index);
+    if (ictIndex > 100) {
+        const pts = 15 * wStats;
+        score += pts;
+        breakdown.ict += pts;
+        reasons.push('Elite underlying stats');
+    } else if (ictIndex > 70) {
+        const pts = 8 * wStats;
+        score += pts;
+        breakdown.ict += pts;
     }
 
+    // xG/xA Boost
     if (player.expected_goal_involvements) {
         const xGI = parseFloat(player.expected_goal_involvements);
         if (xGI > 5.0) {
-            score += 15;
-            breakdown.xg += 15;
-            reasons.push(`High xGI (${xGI})`);
-        } else if (xGI > 3.0) {
-            score += 8;
-            breakdown.xg += 8;
+            const pts = 10 * wStats;
+            score += pts;
+            breakdown.xg += pts;
+            reasons.push('High xGI');
         }
-    }
-
-    // 5. Market Trends (Transfers In)
-    const transfersIn = player.transfers_in_event;
-    if (transfersIn > 100000) {
-        score += 15;
-        breakdown.trends += 15;
-        reasons.push('Highly requested');
-    } else if (transfersIn > 50000) {
-        score += 8;
-        breakdown.trends += 8;
-        reasons.push('Popular transfer');
     }
 
     // 6. Rotation Risk Check
@@ -358,6 +365,94 @@ export function getDoubleTransferRecommendations(
     return recommendations
         .sort((a, b) => b.scoreGain - a.scoreGain)
         .slice(0, topN);
+}
+
+// Unified Recommendation System
+export type RecommendationType = 'single' | 'double';
+
+export interface StrategicMove {
+    type: RecommendationType;
+    playersOut: Player[];
+    playersIn: Player[];
+    scoreGain: number;       // Raw points gain
+    transferCost: number;    // Points cost (hits)
+    netScore: number;        // Gain - Cost
+    netBudget: number;       // Positive = Savings, Negative = Cost
+}
+
+export function getTopStrategicMoves(
+    currentPlayers: Player[],
+    allPlayers: Player[],
+    fixtures: Fixture[],
+    bank: number,
+    freeTransfers: number,
+    topN: number = 10,
+    weights?: AlgorithmWeights
+): StrategicMove[] {
+    const moves: StrategicMove[] = [];
+
+    // 1. Single Transfers
+    // Get best OUTs
+    const outs = getTransferOutCandidates(currentPlayers, fixtures, weights).slice(0, 10);
+
+    // Get best INs (pre-fetched top lists to optimize)
+    const topTargetsByPos: { [pos: number]: Player[] } = {};
+    [1, 2, 3, 4].forEach(pos => {
+        // Budget is dynamic per move, so we just get the absolute best players generally
+        topTargetsByPos[pos] = getTransferInCandidates(allPlayers, fixtures, pos, 2000, undefined, false, weights)
+            .slice(0, 20)
+            .map(c => c.player);
+    });
+
+    outs.forEach(outCand => {
+        const out = outCand.player;
+        const budget = out.now_cost + bank;
+        const targets = topTargetsByPos[out.element_type].filter(t => t.now_cost <= budget && t.id !== out.id);
+
+        // Take top 3 suitable replacements per OUT to avoid spamming
+        targets.slice(0, 3).forEach(inPlayer => {
+            const outScore = outCand.score; // Higher is "worse" for player, so selling them is good. We treat this as "Points gained by removing bad player"
+            const inCand = calculateTransferInScore(inPlayer, fixtures, undefined, false, weights); // Re-calc exact score
+
+            // Note: Our scores are heuristic (0-100 scale), not strictly "Predicted Points". 
+            // We sum them: Improvement = (InScore - avg) + (OutScore - avg). 
+            // Heuristic: OutScore is "how bad they are". InScore is "how good they are".
+            // Total Gain ~ InScore + OutScore.
+            const rawGain = inCand.score + outScore;
+
+            const cost = freeTransfers >= 1 ? 0 : 4;
+
+            moves.push({
+                type: 'single',
+                playersOut: [out],
+                playersIn: [inPlayer],
+                scoreGain: rawGain,
+                transferCost: cost,
+                netScore: rawGain - (cost * 5), // Weight hit cost x5 because heuristics are 0-100 scale, but hits are real points.
+                netBudget: out.now_cost - inPlayer.now_cost
+            });
+        });
+    });
+
+
+    // 2. Double Transfers
+    const doubleRecs = getDoubleTransferRecommendations(currentPlayers, allPlayers, fixtures, bank, 10);
+    doubleRecs.forEach(rec => {
+        const cost = Math.max(0, 2 - freeTransfers) * 4;
+
+        moves.push({
+            type: 'double',
+            playersOut: [rec.out1, rec.out2],
+            playersIn: [rec.in1, rec.in2],
+            scoreGain: rec.scoreGain,
+            transferCost: cost,
+            netScore: rec.scoreGain - (cost * 5), // Weight hits same as above
+            netBudget: rec.netCost * -1 // netCost in Rec is (In - Out), so negative of that is budget change (Savings)
+        });
+    });
+
+    // Sort by Net Score
+    return moves.sort((a, b) => b.netScore - a.netScore).slice(0, topN);
 }
 
 function calculateAvgDifficulty(fixtures: Fixture[], player: Player) {

@@ -9,7 +9,7 @@ export interface AlgorithmWeights {
     customWeights?: Record<string, number>; // Dynamic metrics
 }
 
-const DEFAULT_WEIGHTS: AlgorithmWeights = {
+export const DEFAULT_WEIGHTS: AlgorithmWeights = {
     formWeight: 0.5,
     fixtureWeight: 0.3,
     ictWeight: 0.15,
