@@ -33,6 +33,7 @@ interface DashboardClientProps {
   playerHistories: { [key: number]: any };
   squadPlayerIds: Set<number>;
   reportsTabContent: React.ReactNode;
+  teamId?: number;
 }
 
 export function DashboardClient({
@@ -44,6 +45,7 @@ export function DashboardClient({
   playerHistories,
   squadPlayerIds,
   reportsTabContent,
+  teamId
 }: DashboardClientProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
@@ -162,6 +164,7 @@ export function DashboardClient({
                 squadPlayerIds={squadPlayerIds}
                 onPlayerClick={handlePlayerClick}
                 playerHistories={playerHistories}
+                teamId={teamId}
               />
             </div>
           </div>

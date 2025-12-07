@@ -270,6 +270,96 @@ function getUpcomingFixtures(player: Player, fixtures: Fixture[]) {
         .slice(0, 5);
 }
 
+// Double Transfer Recommendation
+export interface DoubleTransferRecommendation {
+    out1: Player;
+    out2: Player;
+    in1: Player;
+    in2: Player;
+    totalScore: number;
+    scoreGain: number;
+    netCost: number;
+}
+
+export function getDoubleTransferRecommendations(
+    currentPlayers: Player[],
+    allPlayers: Player[],
+    fixtures: Fixture[],
+    bank: number = 0,
+    topN: number = 5
+): DoubleTransferRecommendation[] {
+    const recommendations: DoubleTransferRecommendation[] = [];
+
+    // 1. Identify valid candidates to sell (Low projected points or high value tied up)
+    const possibleOuts = getTransferOutCandidates(currentPlayers, fixtures)
+        .slice(0, 8) // Limit to top 8 sell candidates to reduce complexity
+        .map(c => c.player);
+
+    if (possibleOuts.length < 2) return [];
+
+    // 2. Identify top targets to buy (High projected points)
+    // Pre-calculate top score candidates for each position to avoid re-scanning
+    const topTargetsByPos: { [pos: number]: Player[] } = {};
+    [1, 2, 3, 4].forEach(pos => {
+        // Get top 20 unconditional targets (ignoring budget strictly for now)
+        topTargetsByPos[pos] = getTransferInCandidates(allPlayers, fixtures, pos, 2000)
+            .slice(0, 20)
+            .map(c => c.player);
+    });
+
+    // 3. Iterate pairs of OUTs
+    for (let i = 0; i < possibleOuts.length; i++) {
+        for (let j = i + 1; j < possibleOuts.length; j++) {
+            const out1 = possibleOuts[i];
+            const out2 = possibleOuts[j];
+            const combinedBudget = out1.now_cost + out2.now_cost + bank;
+
+            // Target Positions must match Out Positions (Simplification: Direct swaps)
+            // Case A: Same positions (e.g. DEF+DEF -> DEF+DEF)
+            // Case B: Swapped (unlikely if positions differ, usually strictly mapped)
+            // In FPL transfers are 1-1 by position slot mostly, so we assume In1 matches Out1 pos, In2 matches Out2 pos.
+
+            const targets1 = topTargetsByPos[out1.element_type];
+            const targets2 = topTargetsByPos[out2.element_type];
+
+            // Iterate pairs of INs
+            // To be efficient: Sort targets by score. We want max(Score1 + Score2) s.t. Cost1 + Cost2 <= Budget
+
+            for (const in1 of targets1) {
+                // Optimization: If In1 alone exceeds budget, skip (unless In2 is negative cost... impossible)
+                if (in1.now_cost >= combinedBudget - 38) continue; // Min price is ~3.8m
+
+                // Find best in2 that fits remaining budget
+                const remainingBudget = combinedBudget - in1.now_cost;
+
+                // Find best In2
+                const bestIn2 = targets2.find(p => p.id !== in1.id && p.now_cost <= remainingBudget); // Ensure distinct if same pos
+
+                if (bestIn2) {
+                    // Calculate scores
+                    const outScore = (calculateTransferOutScore(out1, fixtures).score + calculateTransferOutScore(out2, fixtures).score);
+                    const inScore = (calculateTransferInScore(in1, fixtures).score + calculateTransferInScore(bestIn2, fixtures).score);
+
+                    // Net Improvement
+                    const scoreGain = inScore + outScore; // Note: OutScore is positive if they are "bad", so Selling Bad + Buying Good = High Gain
+
+                    recommendations.push({
+                        out1, out2, in1, in2: bestIn2,
+                        totalScore: inScore,
+                        scoreGain,
+                        netCost: (in1.now_cost + bestIn2.now_cost) - (out1.now_cost + out2.now_cost)
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort by gain and distinct
+    return recommendations
+        .sort((a, b) => b.scoreGain - a.scoreGain)
+        .slice(0, topN);
+}
+
 function calculateAvgDifficulty(fixtures: Fixture[], player: Player) {
     return fixtures.reduce((sum, fixture) => {
         const isHome = fixture.team_h === player.team;

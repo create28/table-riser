@@ -142,6 +142,55 @@ export async function fetchPlayerHistory(playerId: number) {
   return response.json();
 }
 
+// Fetch manager's history (past gameweeks)
+export async function fetchManagerHistory(teamId: number) {
+  const response = await fetch(`${FPL_BASE_URL}/entry/${teamId}/history/`);
+  if (!response.ok) throw new Error('Failed to fetch manager history');
+  return response.json();
+}
+
+// Helper to calculate free transfers based on history
+export function calculateFreeTransfers(history: any): number {
+  if (!history || !history.current || history.current.length === 0) return 1;
+
+  let freeTransfers = 1; // Start with 1
+  const sortedHistory = [...history.current].sort((a: any, b: any) => a.event - b.event);
+
+  // Iterate through history to simulate FT accumulation
+  for (let i = 0; i < sortedHistory.length; i++) {
+    const gw = sortedHistory[i];
+
+    // Logic: 
+    // You get +1 FT each week
+    // You spend transfers based on 'event_transfers'
+    // Limit caps at 5 (new rule 24/25)
+
+    // Use transfers
+    const transfersMade = gw.event_transfers;
+    const chipsUsed = history.chips?.find((c: any) => c.event === gw.event)?.name;
+
+    if (chipsUsed === 'wildcard' || chipsUsed === 'freehit') {
+      // Chips don't consume FTs, but they might reset the count or hold it?
+      // Standard rule: WC resets FT to 1 for NEXT week. FH restores previous FT count.
+      // Simplifying: WC resets saved transfers.
+      if (chipsUsed === 'wildcard') freeTransfers = 1;
+    } else {
+      freeTransfers -= transfersMade;
+    }
+
+    // Floor at 0 (can't have negative transfers carrying over, you just take hits)
+    if (freeTransfers < 0) freeTransfers = 0;
+
+    // Gain 1 for next week
+    freeTransfers += 1;
+
+    // Cap at 5
+    if (freeTransfers > 5) freeTransfers = 5;
+  }
+
+  return freeTransfers;
+}
+
 // Fetch fixtures
 export async function fetchFixtures(): Promise<Fixture[]> {
   const response = await fetch(`${FPL_BASE_URL}/fixtures/`);

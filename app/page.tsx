@@ -158,6 +158,7 @@ export default async function Home({
               <ScoutReportsWrapper allPlayers={data.allPlayers} />
             </Suspense>
           }
+          teamId={teamId}
         />
       </Suspense>
 
