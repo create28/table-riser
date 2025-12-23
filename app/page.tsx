@@ -1,11 +1,12 @@
+'use client';
+
+// Re-exporting as server component wrapper
 import { Suspense } from 'react';
-import { fetchBootstrapStatic, fetchManagerTeam, fetchManagerInfo, getCurrentGameweek, fetchPlayerHistory } from '@/lib/fpl-api';
+import { fetchBootstrapStatic, fetchManagerTeam, fetchManagerInfo, getCurrentGameweek, fetchPlayerHistory, fetchFixtures } from '@/lib/fpl-api';
 import { DashboardClient } from '@/components/dashboard-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { fetchFixtures } from '@/lib/fpl-api';
 import { DashboardWrapper } from '@/components/dashboard-wrapper';
-import { ScoutReportsWrapper } from '@/components/scout-reports-wrapper';
 import { Loader2 } from 'lucide-react';
 
 const DEFAULT_TEAM_ID = 3992229;
@@ -18,9 +19,6 @@ async function getDashboardData(teamId: number) {
       fetchFixtures(),
     ]);
 
-    // Note: Scout reports are now fetched in a separate server component (ScoutReportsWrapper)
-    // to allow streaming and prevent blocking the main dashboard load.
-
     const currentGameweek = getCurrentGameweek(bootstrapData.events);
 
     // Fetch manager's team for current gameweek
@@ -28,47 +26,47 @@ async function getDashboardData(teamId: number) {
     const managerInfo = await fetchManagerInfo(teamId);
 
     // Get player IDs from manager's team
-    const playerIds = managerTeam.picks.map(pick => pick.element);
+    const playerIds = managerTeam.picks.map((pick: any) => pick.element);
     const playerIdsSet = new Set(playerIds);
 
     // Get full player details
-    const teamPlayers = bootstrapData.elements.filter(player =>
+    const teamPlayers = bootstrapData.elements.filter((player: any) =>
       playerIds.includes(player.id)
     );
 
     // Get unique team IDs from players
-    const playerTeams = teamPlayers.map(player => player.team);
+    const playerTeams = teamPlayers.map((player: any) => player.team);
 
     // Fetch player histories for all visible players on the dashboard
     // This includes squad players + top performers shown in various components
     const playersToFetchHistory = new Set<number>();
 
     // Add squad players
-    teamPlayers.forEach(p => playersToFetchHistory.add(p.id));
+    teamPlayers.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     // Add top 100 by points (shown in various tables)
     const topByPoints = [...bootstrapData.elements]
-      .sort((a, b) => b.total_points - a.total_points)
+      .sort((a: any, b: any) => b.total_points - a.total_points)
       .slice(0, 100);
-    topByPoints.forEach(p => playersToFetchHistory.add(p.id));
+    topByPoints.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     // Add top 50 by form (shown in PlayerForm component)
     const topByForm = [...bootstrapData.elements]
-      .filter(p => p.minutes > 300)
-      .sort((a, b) => parseFloat(b.form) - parseFloat(a.form))
+      .filter((p: any) => p.minutes > 300)
+      .sort((a: any, b: any) => parseFloat(b.form) - parseFloat(a.form))
       .slice(0, 50);
-    topByForm.forEach(p => playersToFetchHistory.add(p.id));
+    topByForm.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     // Add top 50 by value efficiency (shown in ValueEfficiency component)
     const topByValue = [...bootstrapData.elements]
-      .filter(p => p.total_points > 0 && p.minutes > 300)
-      .sort((a, b) => {
+      .filter((p: any) => p.total_points > 0 && p.minutes > 300)
+      .sort((a: any, b: any) => {
         const valueA = a.total_points / (a.now_cost / 10);
         const valueB = b.total_points / (b.now_cost / 10);
         return valueB - valueA;
       })
       .slice(0, 50);
-    topByValue.forEach(p => playersToFetchHistory.add(p.id));
+    topByValue.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     console.log(`Fetching player histories for ${playersToFetchHistory.size} players...`);
 
@@ -90,8 +88,10 @@ async function getDashboardData(teamId: number) {
       allPlayers: bootstrapData.elements, // All players for transfer suggestions
       teams: bootstrapData.teams,
       fixtures,
+      events: bootstrapData.events,
       playerTeams,
       managerInfo,
+      managerTeam, // Return full manager team object
       currentGameweek,
       entryHistory: managerTeam.entry_history,
       playerHistories,
@@ -114,15 +114,6 @@ function LoadingCard() {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function ReportsLoading() {
-  return (
-    <div className="flex flex-col items-center justify-center h-64 space-y-4 text-muted-foreground">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <p>Loading latest scout reports...</p>
-    </div>
   );
 }
 
@@ -150,14 +141,12 @@ export default async function Home({
           allPlayers={data.allPlayers}
           teams={data.teams}
           fixtures={data.fixtures}
+          events={data.events}
           playerTeams={data.playerTeams}
           playerHistories={data.playerHistories}
           squadPlayerIds={data.squadPlayerIds}
-          reportsTabContent={
-            <Suspense fallback={<ReportsLoading />}>
-              <ScoutReportsWrapper allPlayers={data.allPlayers} />
-            </Suspense>
-          }
+          managerInfo={data.managerInfo}
+          managerTeam={data.managerTeam}
           teamId={teamId}
         />
       </Suspense>

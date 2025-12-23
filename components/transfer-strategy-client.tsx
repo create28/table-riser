@@ -628,9 +628,9 @@ export function TransferStrategyClient({
               <input
                 type="number"
                 min="1"
-                max="2"
+                max="5"
                 value={freeTransfersInput}
-                onChange={(e) => setFreeTransfersInput(Math.min(2, Math.max(1, parseInt(e.target.value) || 1)))}
+                onChange={(e) => setFreeTransfersInput(Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
                 className="text-2xl font-bold text-purple-600 w-20 px-2 py-1 border rounded bg-background text-center"
               />
             </div>

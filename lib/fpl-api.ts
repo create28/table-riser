@@ -94,15 +94,17 @@ export interface Fixture {
   team_a_score: number | null;
 }
 
+export interface Event {
+  id: number;
+  name: string;
+  deadline_time: string;
+  finished: boolean;
+  is_current: boolean;
+  is_next: boolean;
+}
+
 export interface BootstrapStatic {
-  events: Array<{
-    id: number;
-    name: string;
-    deadline_time: string;
-    finished: boolean;
-    is_current: boolean;
-    is_next: boolean;
-  }>;
+  events: Event[];
   teams: Team[];
   elements: Player[];
   element_types: Array<{

@@ -1,19 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Player, Team } from '@/lib/fpl-api';
+import { Player, Team, Event } from '@/lib/fpl-api';
 import { PlayerDetailModal } from '@/components/player-detail-modal';
 import { PlayerForm } from '@/components/player-form';
-import { ValueEfficiency } from '@/components/value-efficiency';
-import { TeamForm } from '@/components/team-form';
-import { FixtureDifficulty } from '@/components/fixture-difficulty';
-import { TransferCoefficient } from '@/components/transfer-coefficient';
-import { TransferSuggestions } from '@/components/transfer-suggestions';
+import { TransferStrategyClient } from '@/components/transfer-strategy-client';
 import { PlayerVsTeam } from '@/components/player-vs-team';
 import { PlayerVolatility } from '@/components/player-volatility';
 import { OptimizationTools } from '@/components/optimization-tools';
 import { OverperformersList } from '@/components/overperformers-list';
-
 import { UnderperformersList } from '@/components/underperformers-list';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PlayerPerformance } from '@/components/player-performance';
@@ -21,18 +16,20 @@ import { ChipStrategy } from '@/components/chip-strategy';
 import { getChipStrategy } from '@/lib/chip-strategy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BestLineup } from '@/components/best-lineup';
-import { ScoutReports } from '@/components/scout-reports';
-import { ScoutReportItem, PlayerMention } from '@/lib/rss';
+import { PlayerDetailProvider } from '@/components/player-detail-provider';
+import { StrategyPlayerModal } from '@/components/strategy-player-modal';
 
 interface DashboardClientProps {
   players: Player[];
   allPlayers: Player[];
   teams: Team[];
   fixtures: any[];
+  events: Event[];
   playerTeams: number[];
   playerHistories: { [key: number]: any };
   squadPlayerIds: Set<number>;
-  reportsTabContent: React.ReactNode;
+  managerInfo: any;
+  managerTeam: any;
   teamId?: number;
 }
 
@@ -41,10 +38,12 @@ export function DashboardClient({
   allPlayers,
   teams,
   fixtures,
+  events,
   playerTeams,
   playerHistories,
   squadPlayerIds,
-  reportsTabContent,
+  managerInfo,
+  managerTeam,
   teamId
 }: DashboardClientProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -57,8 +56,13 @@ export function DashboardClient({
     setSelectedPlayer(null);
   };
 
-  // Calculate current gameweek (approximate based on fixtures)
-  const currentGameweek = fixtures.find(f => !f.finished)?.event || 38;
+  // Calculate current gameweek
+  const currentGameweek = events.find(e => e.is_current)?.id || 38;
+
+  // Calculate next 5 gameweeks for Strategy
+  const nextGameweeks = events.filter(
+    e => e.id > currentGameweek && e.id <= currentGameweek + 5
+  );
 
   // Chip Strategy Data with intelligent analysis
   const chipSets = getChipStrategy(currentGameweek, [], fixtures, allPlayers, teams);
@@ -66,7 +70,7 @@ export function DashboardClient({
   const selectedTeam = selectedPlayer ? (teams.find(t => t.id === selectedPlayer.team) || null) : null;
 
   return (
-    <>
+    <PlayerDetailProvider>
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -79,20 +83,15 @@ export function DashboardClient({
 
         {/* --- OVERVIEW TAB --- */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-            <div className="col-span-4">
-              <PlayerPerformance
-                players={players}
-                allPlayers={allPlayers}
-                teams={teams}
-                squadPlayerIds={squadPlayerIds}
-                onPlayerClick={handlePlayerClick}
-                playerHistories={playerHistories}
-              />
-            </div>
-            <div className="col-span-3">
-              <FixtureDifficulty teams={teams} fixtures={fixtures} playerTeams={playerTeams} />
-            </div>
+          <div className="grid gap-4 md:grid-cols-1">
+            <PlayerPerformance
+              players={players}
+              allPlayers={allPlayers}
+              teams={teams}
+              squadPlayerIds={squadPlayerIds}
+              onPlayerClick={handlePlayerClick}
+              playerHistories={playerHistories}
+            />
           </div>
         </TabsContent>
 
@@ -146,28 +145,25 @@ export function DashboardClient({
 
         {/* --- REPORTS TAB --- */}
         <TabsContent value="reports" className="space-y-4">
-          {reportsTabContent}
+          {/* Removed Content as requested */}
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
+            <p>No reports available.</p>
+          </div>
         </TabsContent>
 
-        {/* --- TRANSFERS TAB --- */}
+        {/* --- TRANSFERS TAB (Merged Strategy) --- */}
         <TabsContent value="transfers" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="md:col-span-1">
-              <TransferCoefficient players={players} onPlayerClick={handlePlayerClick} />
-            </div>
-            <div className="md:col-span-2">
-              <TransferSuggestions
-                currentPlayers={players}
-                allPlayers={allPlayers}
-                teams={teams}
-                fixtures={fixtures}
-                squadPlayerIds={squadPlayerIds}
-                onPlayerClick={handlePlayerClick}
-                playerHistories={playerHistories}
-                teamId={teamId}
-              />
-            </div>
-          </div>
+          <TransferStrategyClient
+            teams={teams}
+            squadPlayers={players}
+            allPlayers={allPlayers}
+            fixtures={fixtures}
+            currentGameweek={currentGameweek}
+            nextGameweeks={nextGameweeks}
+            playerHistories={playerHistories}
+            managerTeam={managerTeam}
+            managerInfo={managerInfo}
+          />
         </TabsContent>
 
         {/* --- BEST LINEUP TAB --- */}
@@ -207,7 +203,7 @@ export function DashboardClient({
               <ChipStrategy chipSets={chipSets} currentGameweek={currentGameweek} />
             </div>
             <div>
-              {/* Placeholder for Chip Optimizer or more detailed analysis */}
+              {/* Placeholder for Chip Optimizer */}
               <Card>
                 <CardHeader>
                   <CardTitle>Chip Optimizer</CardTitle>
@@ -234,6 +230,11 @@ export function DashboardClient({
         fixtures={fixtures}
         teams={teams}
       />
-    </>
+      <StrategyPlayerModal
+        teams={teams}
+        playerHistories={playerHistories}
+        fixtures={fixtures}
+      />
+    </PlayerDetailProvider>
   );
 }

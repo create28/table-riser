@@ -234,6 +234,11 @@ function analyzeChip(
         if (dgw) {
             recommendedGw = dgw;
             reason = `Target Double Gameweek ${dgw} with strong bench`;
+        } else if ((currentGw === 18 || currentGw === 19) && deadlineGw >= 19) {
+            // Specific overrides for GW18/19 as requested
+            recommendedGw = currentGw;
+            reason = "Strategic Bench Boost window (GW18/GW19)";
+            urgency = 'high';
         } else if (teams.length > 0 && fixtures.length > 0) {
             const bbWeek = findBestBenchBoostWeek(fixtures, teams, currentGw, deadlineGw);
             if (bbWeek) {
@@ -241,13 +246,19 @@ function analyzeChip(
                 reason = `GW${bbWeek.gameweek}: ${bbWeek.reason}`;
                 urgency = bbWeek.gameweek - currentGw <= 3 ? 'medium' : 'low';
             } else if (deadlineGw <= 19) {
-                reason = "Save for a mini-DGW or strong bench week before GW19";
+                // If approaching GW18/19 but not there yet
+                if (currentGw < 18) {
+                    reason = "Target GW18 or GW19 for Bench Boost";
+                    urgency = "medium";
+                } else {
+                    reason = "Save for a mini-DGW or strong bench week before GW19";
+                }
             } else {
                 const estimatedGw = currentGw < 34 ? 34 : 37;
                 reason = `Save for a Double Gameweek (Likely GW${estimatedGw})`;
             }
         } else if (deadlineGw <= 19) {
-            reason = "Save for a mini-DGW or strong bench week before GW19";
+            reason = "Target GW18 or GW19 for Bench Boost";
         }
     } else if (apiName === 'freehit') {
         const bgw = findNextBlankGameweek(currentGw, deadlineGw, fixtures);
