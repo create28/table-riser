@@ -52,7 +52,47 @@ interface TransferRecommendation {
   }>;
 }
 
+// Helper: Generate detailed explanation
+const generateTransferExplanation = (
+  outPlayer: PlayerScore,
+  inPlayer: PlayerScore,
+  gameweek: number,
+  volatilityPreference: number
+): string => {
+  const improvement = inPlayer.score - outPlayer.score;
+  const priceDiff = (inPlayer.player.now_cost - outPlayer.player.now_cost) / 10;
+
+  let reason = `Swapping **${outPlayer.player.web_name}** for **${inPlayer.player.web_name}** offers a projected improvement of **${improvement.toFixed(1)} points** in our model score.\n\n`;
+
+  // Fixtures
+  if (inPlayer.fixtureScore > outPlayer.fixtureScore + 20) {
+    reason += `• **Better Fixtures**: ${inPlayer.player.web_name} has significantly easier upcoming games compared to ${outPlayer.player.web_name}.\n`;
+  } else if (inPlayer.fixtureScore < outPlayer.fixtureScore - 10) {
+    reason += `• **Fixture Warning**: Note that ${inPlayer.player.web_name} has tougher immediate fixtures, but other factors outweigh this.\n`;
+  }
+
+  // Form
+  if (inPlayer.formScore > outPlayer.formScore + 20) {
+    reason += `• **Better Form**: ${inPlayer.player.web_name} is currently in much better form (Points per Game/Recent Points).\n`;
+  }
+
+  // Price
+  if (priceDiff < 0) {
+    reason += `• **Budget**: Frees up £${Math.abs(priceDiff).toFixed(1)}m in funds.\n`;
+  } else if (priceDiff > 0) {
+    reason += `• **Investment**: Uses £${priceDiff.toFixed(1)}m of your bank.\n`;
+  }
+
+  // Volatility
+  if (volatilityPreference > 60 && inPlayer.volatilityScore > 50) {
+    reason += `• **Differential Potential**: Matches your high volatility preference with explosive point potential.\n`;
+  }
+
+  return reason;
+};
+
 export function TransferStrategyClient({
+
   teams,
   squadPlayers,
   allPlayers,
