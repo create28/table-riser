@@ -103,9 +103,36 @@ export function TransferStrategyClient({
   managerTeam,
   managerInfo,
 }: TransferStrategyClientProps) {
-  const [volatilityPreference, setVolatilityPreference] = useState(50); // 0 = stable, 100 = volatile
+  /* 
+    PERFORMANCE OPTIMIZATION:
+    Separate UI state (immediate) from Calculation state (debounced).
+    This prevents the heavy transfer strategy calculation from running 
+    on every single frame of a slider drag.
+  */
+  // UI States (Instant feedback)
+  const [volatilityUI, setVolatilityUI] = useState(50);
+  const [budgetUI, setBudgetUI] = useState(0);
+
+  // Calculation States (Debounced)
+  const [volatilityPreference, setVolatilityPreference] = useState(50);
+  const [budgetFlexibility, setBudgetFlexibility] = useState(0);
+
+  // Debounce Effects
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setVolatilityPreference(volatilityUI);
+    }, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [volatilityUI]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setBudgetFlexibility(budgetUI);
+    }, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [budgetUI]);
+
   const [freeTransfersInput, setFreeTransfersInput] = useState(1); // User inputs their actual FTs
-  const [budgetFlexibility, setBudgetFlexibility] = useState(0); // -5 to +5 million
   const [considerRolling, setConsiderRolling] = useState(true); // Whether to consider banking transfers
 
   // ML State
@@ -516,12 +543,12 @@ export function TransferStrategyClient({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Budget Flexibility</span>
               <span className="text-lg font-bold text-primary">
-                {budgetFlexibility > 0 ? '+' : ''}{budgetFlexibility.toFixed(1)}m
+                {budgetUI > 0 ? '+' : ''}{budgetUI.toFixed(1)}m
               </span>
             </div>
             <Slider
-              value={[budgetFlexibility * 10]}
-              onValueChange={(value) => setBudgetFlexibility(value[0] / 10)}
+              value={[budgetUI * 10]}
+              onValueChange={(value) => setBudgetUI(value[0] / 10)}
               min={-50}
               max={50}
               step={1}
@@ -552,7 +579,7 @@ export function TransferStrategyClient({
           </div>
 
           <p className="text-xs text-muted-foreground mt-2">
-            💡 Recommendations consider your available funds (bank + selling price {budgetFlexibility !== 0 ? `${budgetFlexibility > 0 ? '+' : ''}${budgetFlexibility.toFixed(1)}m flexibility` : ''})
+            💡 Recommendations consider your available funds (bank + selling price {budgetUI !== 0 ? `${budgetUI > 0 ? '+' : ''}${budgetUI.toFixed(1)}m flexibility` : ''})
           </p>
         </CardContent>
       </Card>
@@ -603,15 +630,15 @@ export function TransferStrategyClient({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
-                {volatilityPreference < 33 ? '🛡️ Stable (Conservative)' :
-                  volatilityPreference < 67 ? '⚖️ Balanced' :
+                {volatilityUI < 33 ? '🛡️ Stable (Conservative)' :
+                  volatilityUI < 67 ? '⚖️ Balanced' :
                     '🚀 Volatile (Ambitious)'}
               </span>
-              <span className="text-2xl font-bold text-primary">{volatilityPreference}</span>
+              <span className="text-2xl font-bold text-primary">{volatilityUI}</span>
             </div>
             <Slider
-              value={[volatilityPreference]}
-              onValueChange={(value) => setVolatilityPreference(value[0])}
+              value={[volatilityUI]}
+              onValueChange={(value) => setVolatilityUI(value[0])}
               min={0}
               max={100}
               step={5}
