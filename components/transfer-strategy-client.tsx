@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Brain, Info } from 'lucide-react';
+import { Brain, Info, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Player, Team, Fixture } from '@/lib/fpl-api';
@@ -325,174 +325,187 @@ export function TransferStrategyClient({
     };
   };
 
-  // Generate transfer strategy with OPTIMIZED LOOP
-  const transferStrategy = useMemo(() => {
-    const strategy: TransferRecommendation[] = [];
+  // Async Calculation State
+  const [transferStrategy, setTransferStrategy] = useState<TransferRecommendation[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
 
-    // Track virtual squad that evolves with recommendations
-    let virtualSquad = [...squadPlayers];
-    let virtualSquadIds = new Set(squadPlayers.map(p => p.id));
+  // Generate transfer strategy with ASYNC CHUNKED LOOP
+  useEffect(() => {
+    let isCancelled = false;
 
-    // Track free transfers available
-    let currentFreeTransfers = freeTransfersInput;
-    let virtualBank = (managerInfo.last_deadline_bank || 0) / 10;
+    const calculateStrategy = async () => {
+      setIsCalculating(true);
 
-    // Iterate Gameweeks
-    for (let i = 0; i < nextGameweeks.length; i++) {
-      const gameweek = nextGameweeks[i].id;
-      const gameweeksAhead = i + 1;
+      // Initial delay to allow UI to show loading state and unblock main thread immediately
+      await new Promise(resolve => setTimeout(resolve, 10));
+      if (isCancelled) return;
 
-      // 1. Calculate scores for ALL relevant players ONCE for this gameweek
-      // This includes allPlayers (for transfer targets) AND virtualSquad (for transfer out)
-      // Optimization: Only score players who have minutes > 0 or are in the squad to reduce set size?
-      // Let's stick to scoring everyone but loop cleanly.
+      const results: TransferRecommendation[] = [];
 
-      // We'll store top targets by position map
-      const topTargetsByPosition = new Map<number, PlayerScore[]>(); // ElementType -> sorted list
+      // Track virtual squad that evolves with recommendations
+      let virtualSquad = [...squadPlayers];
+      // Note: We need to use IDs because object references might change
+      let virtualSquadIds = new Set(squadPlayers.map(p => p.id));
 
-      // Score all potential targets (exclude current squad ids later or now)
-      // Filter first to reduce scoring calls
-      const validCandidates = allPlayers.filter(p =>
-        p.minutes > 100 &&
-        p.chance_of_playing_next_round !== 0 &&
-        !virtualSquadIds.has(p.id) // Exclude current squad
-      );
+      // Track free transfers available
+      let currentFreeTransfers = freeTransfersInput;
+      let virtualBank = (managerInfo.last_deadline_bank || 0) / 10;
 
-      validCandidates.forEach(p => {
-        const s = scorePlayer(p, gameweeksAhead, volatilityPreference);
-        if (!topTargetsByPosition.has(p.element_type)) topTargetsByPosition.set(p.element_type, []);
-        topTargetsByPosition.get(p.element_type)?.push(s);
-      });
+      // Iterate Gameweeks
+      for (let i = 0; i < nextGameweeks.length; i++) {
+        if (isCancelled) break;
 
-      // Sort each position list by score desc
-      topTargetsByPosition.forEach((list) => list.sort((a, b) => b.score - a.score));
+        // CRITICAL PERFORMANCE FIX: Yield to main thread between gameweeks
+        // This allows the browser to render frames, handle events, and prevents freezing
+        await new Promise(resolve => setTimeout(resolve, 0));
 
-      // 2. Score Current Squad
-      const squadScores = virtualSquad
-        .map(p => scorePlayer(p, gameweeksAhead, volatilityPreference))
-        .sort((a, b) => a.score - b.score); // Lowest score first (Transfer Out candidates)
+        const gameweek = nextGameweeks[i].id;
+        const gameweeksAhead = i + 1;
 
-      // 3. Find Best Transfer
-      const allPossibleTransfers: Array<{
-        out: PlayerScore;
-        in: PlayerScore;
-        improvement: number;
-      }> = [];
+        // 1. Calculate scores for ALL relevant players ONCE for this gameweek
+        const topTargetsByPosition = new Map<number, PlayerScore[]>(); // ElementType -> sorted list
 
-      // For each squad player, check top 5 replacements in same position
-      for (const squadScore of squadScores) {
-        const pos = squadScore.player.element_type;
-        const sellingPrice = squadScore.player.now_cost / 10;
-        const availableFunds = virtualBank + sellingPrice + budgetFlexibility;
+        // Score all potential targets
+        const validCandidates = allPlayers.filter(p =>
+          p.minutes > 100 &&
+          p.chance_of_playing_next_round !== 0 &&
+          !virtualSquadIds.has(p.id) // Exclude current squad
+        );
 
-        const potentialTargets = topTargetsByPosition.get(pos) || [];
+        validCandidates.forEach(p => {
+          const s = scorePlayer(p, gameweeksAhead, volatilityPreference);
+          if (!topTargetsByPosition.has(p.element_type)) topTargetsByPosition.set(p.element_type, []);
+          topTargetsByPosition.get(p.element_type)?.push(s);
+        });
 
-        // Check top candidates until we find affordable ones
-        let foundCount = 0;
-        for (const target of potentialTargets) {
-          if (foundCount >= 5) break; // Look at top 5 valid only
+        // Sort each position list by score desc
+        topTargetsByPosition.forEach((list) => list.sort((a, b) => b.score - a.score));
 
-          if ((target.player.now_cost / 10) <= availableFunds) {
-            allPossibleTransfers.push({
-              out: squadScore,
-              in: target,
-              improvement: target.score - squadScore.score
-            });
-            foundCount++;
-          }
-        }
-      }
+        // 2. Score Current Squad
+        const squadScores = virtualSquad
+          .map(p => scorePlayer(p, gameweeksAhead, volatilityPreference))
+          .sort((a, b) => a.score - b.score); // Lowest score first (Transfer Out candidates)
 
-      // Sort suggested transfers by improvement
-      allPossibleTransfers.sort((a, b) => b.improvement - a.improvement);
+        // 3. Find Best Transfer
+        const allPossibleTransfers: Array<{
+          out: PlayerScore;
+          in: PlayerScore;
+          improvement: number;
+        }> = [];
 
-      const bestTransfer = allPossibleTransfers.length > 0 ? allPossibleTransfers[0] : null;
+        // For each squad player, check top 5 replacements in same position
+        for (const squadScore of squadScores) {
+          const pos = squadScore.player.element_type;
+          const sellingPrice = squadScore.player.now_cost / 10;
+          const availableFunds = virtualBank + sellingPrice + budgetFlexibility;
 
-      // ... (Logic for recommendation generation remains mostly same) ...
+          const potentialTargets = topTargetsByPosition.get(pos) || [];
 
-      const worstSquadPlayer = bestTransfer?.out;
-      const bestTransferTarget = bestTransfer?.in;
+          // Check top candidates until we find affordable ones
+          let foundCount = 0;
+          for (const target of potentialTargets) {
+            if (foundCount >= 5) break;
 
-      const baseImprovementThreshold = 15;
-      const rollingThreshold = 25;
-      const improvementThreshold = (considerRolling && currentFreeTransfers === 1) ? rollingThreshold : baseImprovementThreshold;
-
-      if (bestTransferTarget && worstSquadPlayer && bestTransfer) {
-        const improvement = bestTransfer.improvement;
-        const priceDiff = (bestTransferTarget.player.now_cost - worstSquadPlayer.player.now_cost) / 10;
-
-        if (improvement > improvementThreshold) {
-          // ... (Generate explanation logic from before) ...
-          let priority: 'high' | 'medium' | 'low' = 'low';
-          if (improvement > 30) priority = 'high';
-          else if (improvement > 20) priority = 'medium';
-
-          let detailedExplanation = generateTransferExplanation(
-            worstSquadPlayer, bestTransferTarget, gameweek, volatilityPreference
-          );
-
-          // Create rec object
-          // ... Alternatives logic ...
-          const alternatives: any[] = [];
-          if (i === 0 && allPossibleTransfers.length > 1) {
-            const alts = allPossibleTransfers.slice(1, 3);
-            for (const alt of alts) {
-              alternatives.push({
-                transferOut: alt.out,
-                transferIn: alt.in,
-                reasoning: `Alt: ${alt.in.reasoning.join(', ')}`,
-                detailedExplanation: generateTransferExplanation(alt.out, alt.in, gameweek, volatilityPreference),
-                priority: alt.improvement > 20 ? 'medium' : 'low'
+            if ((target.player.now_cost / 10) <= availableFunds) {
+              allPossibleTransfers.push({
+                out: squadScore,
+                in: target,
+                improvement: target.score - squadScore.score
               });
+              foundCount++;
             }
           }
+        }
 
-          strategy.push({
-            gameweek,
-            transferOut: worstSquadPlayer,
-            transferIn: bestTransferTarget,
-            reasoning: `Upgrade: ${bestTransferTarget.reasoning.join(', ')}`,
-            detailedExplanation,
-            priority,
-            alternatives: alternatives.length > 0 ? alternatives : undefined
-          });
+        // Sort suggested transfers by improvement
+        allPossibleTransfers.sort((a, b) => b.improvement - a.improvement);
 
-          // Update Virtual Squad
-          virtualSquad = virtualSquad.filter(p => p.id !== worstSquadPlayer.player.id);
-          virtualSquad.push(bestTransferTarget.player);
-          virtualSquadIds.add(bestTransferTarget.player.id); // Add new
-          virtualSquadIds.delete(worstSquadPlayer.player.id); // Remove old - wait, Set API is delete
+        const bestTransfer = allPossibleTransfers.length > 0 ? allPossibleTransfers[0] : null;
+        const worstSquadPlayer = bestTransfer?.out;
+        const bestTransferTarget = bestTransfer?.in;
 
-          // Re-sync Set (easier)
-          virtualSquadIds = new Set(virtualSquad.map(p => p.id));
+        const baseImprovementThreshold = 15;
+        const rollingThreshold = 25;
+        const improvementThreshold = (considerRolling && currentFreeTransfers === 1) ? rollingThreshold : baseImprovementThreshold;
 
-          virtualBank += priceDiff;
-          currentFreeTransfers = (currentFreeTransfers === 2) ? 1 : 1;
+        if (bestTransferTarget && worstSquadPlayer && bestTransfer) {
+          const improvement = bestTransfer.improvement;
+          const priceDiff = (bestTransferTarget.player.now_cost - worstSquadPlayer.player.now_cost) / 10;
 
+          if (improvement > improvementThreshold) {
+            let priority: 'high' | 'medium' | 'low' = 'low';
+            if (improvement > 30) priority = 'high';
+            else if (improvement > 20) priority = 'medium';
+
+            let detailedExplanation = generateTransferExplanation(
+              worstSquadPlayer, bestTransferTarget, gameweek, volatilityPreference
+            );
+
+            // Create alternatives
+            const alternatives: any[] = [];
+            if (i === 0 && allPossibleTransfers.length > 1) {
+              const alts = allPossibleTransfers.slice(1, 3);
+              for (const alt of alts) {
+                alternatives.push({
+                  transferOut: alt.out,
+                  transferIn: alt.in,
+                  reasoning: `Alt: ${alt.in.reasoning.join(', ')}`,
+                  detailedExplanation: generateTransferExplanation(alt.out, alt.in, gameweek, volatilityPreference),
+                  priority: alt.improvement > 20 ? 'medium' : 'low'
+                });
+              }
+            }
+
+            results.push({
+              gameweek,
+              transferOut: worstSquadPlayer,
+              transferIn: bestTransferTarget,
+              reasoning: `Upgrade: ${bestTransferTarget.reasoning.join(', ')}`,
+              detailedExplanation,
+              priority,
+              alternatives: alternatives.length > 0 ? alternatives : undefined
+            });
+
+            // Update Virtual Squad
+            virtualSquad = virtualSquad.filter(p => p.id !== worstSquadPlayer.player.id);
+            virtualSquad.push(bestTransferTarget.player);
+            // Re-sync Set
+            virtualSquadIds = new Set(virtualSquad.map(p => p.id));
+
+            virtualBank += priceDiff;
+            currentFreeTransfers = (currentFreeTransfers === 2) ? 1 : 1;
+
+          } else {
+            // Rolling...
+            results.push({
+              gameweek,
+              reasoning: `Hold transfers${considerRolling && currentFreeTransfers === 1 ? ' (Roll)' : ''}`,
+              detailedExplanation: "Squad well positioned. Saving transfer.",
+              priority: 'low'
+            });
+            if (considerRolling && currentFreeTransfers < 2) currentFreeTransfers++;
+          }
         } else {
-          // Rolling...
-          strategy.push({
+          results.push({
             gameweek,
-            reasoning: `Hold transfers${considerRolling && currentFreeTransfers === 1 ? ' (Roll)' : ''}`,
-            detailedExplanation: "Squad well positioned. Saving transfer.",
+            reasoning: `No beneficial transfers found`,
+            detailedExplanation: "No transfers found within budget.",
             priority: 'low'
           });
           if (considerRolling && currentFreeTransfers < 2) currentFreeTransfers++;
         }
-      } else {
-        strategy.push({
-          gameweek,
-          reasoning: `No beneficial transfers found`,
-          detailedExplanation: "No transfers found within budget.",
-          priority: 'low'
-        });
-        if (considerRolling && currentFreeTransfers < 2) currentFreeTransfers++;
       }
-    }
 
-    return strategy;
+      if (!isCancelled) {
+        setTransferStrategy(results);
+        setIsCalculating(false);
+      }
+    };
 
-  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling, useML, mlWeights]); // Ensure fixtureLookup is stable or use ref
+    calculateStrategy();
+
+    return () => { isCancelled = true; };
+  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling, useML, mlWeights]);
 
   // Get difficulty badge color
   const getDifficultyColor = (difficulty: number) => {
@@ -665,12 +678,18 @@ export function TransferStrategyClient({
       {/* Transfer Plan */}
       <Card>
         <CardHeader>
-          <CardTitle>📅 5-Week Transfer Plan</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              📅 5-Week Transfer Plan
+              {isCalculating && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+            </CardTitle>
+            {isCalculating && <span className="text-xs text-muted-foreground animate-pulse">Updating strategy...</span>}
+          </div>
           <CardDescription>
             Strategic recommendations for the next {nextGameweeks.length} gameweeks
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className={isCalculating ? "opacity-60 transition-opacity duration-300" : "transition-opacity duration-300"}>
           <Tabs defaultValue="timeline" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="timeline">Timeline View</TabsTrigger>
