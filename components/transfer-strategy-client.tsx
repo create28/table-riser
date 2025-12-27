@@ -6,6 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Brain, Info, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -328,6 +329,7 @@ export function TransferStrategyClient({
   // Async Calculation State
   const [transferStrategy, setTransferStrategy] = useState<TransferRecommendation[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [hasCalculated, setHasCalculated] = useState(false); // CRITICAL: Track if user has initiated calculation
 
   // CRITICAL PERFORMANCE FIX: Memoize player IDs to prevent unnecessary recalculations
   // React's shallow comparison on arrays causes the effect to run even when data hasn't changed
@@ -335,7 +337,13 @@ export function TransferStrategyClient({
   const nextGameweekIds = useMemo(() => nextGameweeks.map(gw => gw.id).join(','), [nextGameweeks]);
 
   // Generate transfer strategy with ASYNC CHUNKED LOOP
+  // CRITICAL: Only runs when user explicitly requests it via hasCalculated flag
   useEffect(() => {
+    // CRITICAL CHANGE: Don't auto-calculate, wait for user to click button
+    if (!hasCalculated) {
+      return;
+    }
+
     let isCancelled = false;
 
     const calculateStrategy = async () => {
@@ -511,7 +519,7 @@ export function TransferStrategyClient({
 
     return () => { isCancelled = true; };
   }, [
-    // PERFORMANCE: Use memoized IDs instead of full arrays to prevent unnecessary recalculations
+    hasCalculated, // CRITICAL: Only trigger when user clicks calculate button
     squadPlayerIds,
     nextGameweekIds, 
     currentGameweek, 
@@ -693,21 +701,50 @@ export function TransferStrategyClient({
         </CardContent>
       </Card>
 
-      {/* Transfer Plan */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              📅 5-Week Transfer Plan
-              {isCalculating && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
-            </CardTitle>
-            {isCalculating && <span className="text-xs text-muted-foreground animate-pulse">Updating strategy...</span>}
-          </div>
-          <CardDescription>
-            Strategic recommendations for the next {nextGameweeks.length} gameweeks
-          </CardDescription>
-        </CardHeader>
-        <CardContent className={isCalculating ? "opacity-60 transition-opacity duration-300" : "transition-opacity duration-300"}>
+      {/* CRITICAL: Calculate Button - User must click to start */}
+      {!hasCalculated && (
+        <Card className="border-2 border-primary/20 bg-primary/5">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">Ready to Generate Your Transfer Strategy?</h3>
+                <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
+                  Click the button below to calculate personalized transfer recommendations for the next 5 gameweeks. 
+                  This will analyze {allPlayers.length} players and your squad to find the best moves.
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  ⚡ This calculation takes 5-15 seconds. Your browser will remain responsive.
+                </p>
+              </div>
+              <Button 
+                onClick={() => setHasCalculated(true)} 
+                size="lg"
+                className="gap-2"
+              >
+                <Brain className="h-5 w-5" />
+                Calculate Transfer Strategy
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Transfer Plan - Only shows after calculation */}
+      {hasCalculated && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                📅 5-Week Transfer Plan
+                {isCalculating && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+              </CardTitle>
+              {isCalculating && <span className="text-xs text-muted-foreground animate-pulse">Calculating strategy...</span>}
+            </div>
+            <CardDescription>
+              Strategic recommendations for the next {nextGameweeks.length} gameweeks
+            </CardDescription>
+          </CardHeader>
+          <CardContent className={isCalculating ? "opacity-60 transition-opacity duration-300" : "transition-opacity duration-300"}>
           <Tabs defaultValue="timeline" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="timeline">Timeline View</TabsTrigger>
@@ -1042,9 +1079,11 @@ export function TransferStrategyClient({
           </Tabs>
         </CardContent>
       </Card>
+      )}
 
-      {/* Strategy Summary */}
-      <Card>
+      {/* Strategy Summary - Only shows after calculation */}
+      {hasCalculated && (
+        <Card>
         <CardHeader>
           <CardTitle>📊 Strategy Summary</CardTitle>
         </CardHeader>
@@ -1084,6 +1123,7 @@ export function TransferStrategyClient({
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

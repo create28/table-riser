@@ -44,20 +44,21 @@ async function getDashboardData(teamId: number) {
     // Add squad players
     teamPlayers.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // PERFORMANCE FIX: Reduced from 100 to 50 to minimize data fetching
+    // CRITICAL FIX: Drastically reduced to prevent browser freezing
+    // Only fetch histories for squad + absolute essentials
     const topByPoints = [...bootstrapData.elements]
       .sort((a: any, b: any) => b.total_points - a.total_points)
-      .slice(0, 50);
+      .slice(0, 20); // Reduced from 50 to 20
     topByPoints.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // PERFORMANCE FIX: Reduced from 50 to 30 by form
+    // CRITICAL FIX: Reduced from 30 to 15 by form
     const topByForm = [...bootstrapData.elements]
       .filter((p: any) => p.minutes > 300)
       .sort((a: any, b: any) => parseFloat(b.form) - parseFloat(a.form))
-      .slice(0, 30);
+      .slice(0, 15);
     topByForm.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // PERFORMANCE FIX: Reduced from 50 to 30 by value
+    // CRITICAL FIX: Reduced from 30 to 15 by value
     const topByValue = [...bootstrapData.elements]
       .filter((p: any) => p.total_points > 0 && p.minutes > 300)
       .sort((a: any, b: any) => {
@@ -65,15 +66,15 @@ async function getDashboardData(teamId: number) {
         const valueB = b.total_points / (b.now_cost / 10);
         return valueB - valueA;
       })
-      .slice(0, 30);
+      .slice(0, 15);
     topByValue.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     console.log(`Fetching player histories for ${playersToFetchHistory.size} players...`);
 
-    // PERFORMANCE FIX: Batch requests with concurrency limit to prevent browser overload
+    // CRITICAL FIX: Further reduced batch size and added delays
     const playerHistories: { [key: number]: any } = {};
     const allPlayerIdsToFetch = Array.from(playersToFetchHistory);
-    const BATCH_SIZE = 10; // Process 10 players at a time
+    const BATCH_SIZE = 5; // Reduced from 10 to 5 to prevent overload
     
     for (let i = 0; i < allPlayerIdsToFetch.length; i += BATCH_SIZE) {
       const batch = allPlayerIdsToFetch.slice(i, i + BATCH_SIZE);
