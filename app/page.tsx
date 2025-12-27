@@ -1,6 +1,5 @@
-'use client';
-
-// Re-exporting as server component wrapper
+// CRITICAL FIX: Removed 'use client' - this MUST be a server component
+// to prevent browser from freezing during data fetch
 import { Suspense } from 'react';
 import { fetchBootstrapStatic, fetchManagerTeam, fetchManagerInfo, getCurrentGameweek, fetchPlayerHistory, fetchFixtures } from '@/lib/fpl-api';
 import { DashboardClient } from '@/components/dashboard-client';
