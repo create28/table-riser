@@ -34,3 +34,4 @@ export function StrategyPlayerModal({ teams, playerHistories, fixtures }: Strate
 
 
 
+

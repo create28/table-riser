@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -42,44 +42,46 @@ export function UnderperformersList({ allPlayers, teams, fixtures, onPlayerClick
         return { upcoming, avgDifficulty };
     };
 
-    // Calculate underperformance stats
-    const underperformers = allPlayers
-        .filter(p => {
-            // Filter for players with significant minutes to avoid noise
-            if (p.minutes < 300) return false;
+    // PERFORMANCE FIX: Memoize expensive calculation to prevent recalculation on every render
+    const underperformers = useMemo(() => {
+        return allPlayers
+            .filter(p => {
+                // Filter for players with significant minutes to avoid noise
+                if (p.minutes < 300) return false;
 
-            // Must have xGI data
-            if (!p.expected_goal_involvements) return false;
+                // Must have xGI data
+                if (!p.expected_goal_involvements) return false;
 
-            return true;
-        })
-        .map(p => {
-            const xGI = parseFloat(p.expected_goal_involvements || '0');
-            const actualGI = p.goals_scored + p.assists;
-            const delta = xGI - actualGI;
-            const { upcoming, avgDifficulty } = getUpcomingFixturesInfo(p);
+                return true;
+            })
+            .map(p => {
+                const xGI = parseFloat(p.expected_goal_involvements || '0');
+                const actualGI = p.goals_scored + p.assists;
+                const delta = xGI - actualGI;
+                const { upcoming, avgDifficulty } = getUpcomingFixturesInfo(p);
 
-            return {
-                player: p,
-                xGI,
-                actualGI,
-                delta,
-                upcoming,
-                avgDifficulty
-            };
-        })
-        .filter(item => {
-            // Must be underperforming (positive delta)
-            // Let's set a threshold to show only "unlucky" players
-            if (item.delta < 1.0) return false;
+                return {
+                    player: p,
+                    xGI,
+                    actualGI,
+                    delta,
+                    upcoming,
+                    avgDifficulty
+                };
+            })
+            .filter(item => {
+                // Must be underperforming (positive delta)
+                // Let's set a threshold to show only "unlucky" players
+                if (item.delta < 1.0) return false;
 
-            // Filter by fixtures if toggle is on
-            if (showGoodFixturesOnly && item.avgDifficulty > 3.0) return false;
+                // Filter by fixtures if toggle is on
+                if (showGoodFixturesOnly && item.avgDifficulty > 3.0) return false;
 
-            return true;
-        })
-        .sort((a, b) => b.delta - a.delta) // Sort by most underperforming
-        .slice(0, 20); // Top 20
+                return true;
+            })
+            .sort((a, b) => b.delta - a.delta) // Sort by most underperforming
+            .slice(0, 20); // Top 20
+    }, [allPlayers, fixtures, showGoodFixturesOnly]);
 
     const getDifficultyColor = (difficulty: number) => {
         if (difficulty <= 2) return 'bg-green-500';

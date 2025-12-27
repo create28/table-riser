@@ -44,20 +44,20 @@ async function getDashboardData(teamId: number) {
     // Add squad players
     teamPlayers.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // Add top 100 by points (shown in various tables)
+    // PERFORMANCE FIX: Reduced from 100 to 50 to minimize data fetching
     const topByPoints = [...bootstrapData.elements]
       .sort((a: any, b: any) => b.total_points - a.total_points)
-      .slice(0, 100);
+      .slice(0, 50);
     topByPoints.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // Add top 50 by form (shown in PlayerForm component)
+    // PERFORMANCE FIX: Reduced from 50 to 30 by form
     const topByForm = [...bootstrapData.elements]
       .filter((p: any) => p.minutes > 300)
       .sort((a: any, b: any) => parseFloat(b.form) - parseFloat(a.form))
-      .slice(0, 50);
+      .slice(0, 30);
     topByForm.forEach((p: any) => playersToFetchHistory.add(p.id));
 
-    // Add top 50 by value efficiency (shown in ValueEfficiency component)
+    // PERFORMANCE FIX: Reduced from 50 to 30 by value
     const topByValue = [...bootstrapData.elements]
       .filter((p: any) => p.total_points > 0 && p.minutes > 300)
       .sort((a: any, b: any) => {
@@ -65,23 +65,30 @@ async function getDashboardData(teamId: number) {
         const valueB = b.total_points / (b.now_cost / 10);
         return valueB - valueA;
       })
-      .slice(0, 50);
+      .slice(0, 30);
     topByValue.forEach((p: any) => playersToFetchHistory.add(p.id));
 
     console.log(`Fetching player histories for ${playersToFetchHistory.size} players...`);
 
+    // PERFORMANCE FIX: Batch requests with concurrency limit to prevent browser overload
     const playerHistories: { [key: number]: any } = {};
-    await Promise.all(
-      Array.from(playersToFetchHistory).map(async (playerId) => {
-        try {
-          const history = await fetchPlayerHistory(playerId);
-          playerHistories[playerId] = history;
-        } catch (error) {
-          console.error(`Failed to fetch history for player ${playerId}:`, error);
-          playerHistories[playerId] = { history: [] };
-        }
-      })
-    );
+    const playerIds = Array.from(playersToFetchHistory);
+    const BATCH_SIZE = 10; // Process 10 players at a time
+    
+    for (let i = 0; i < playerIds.length; i += BATCH_SIZE) {
+      const batch = playerIds.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (playerId) => {
+          try {
+            const history = await fetchPlayerHistory(playerId);
+            playerHistories[playerId] = history;
+          } catch (error) {
+            console.error(`Failed to fetch history for player ${playerId}:`, error);
+            playerHistories[playerId] = { history: [] };
+          }
+        })
+      );
+    }
 
     return {
       players: teamPlayers,

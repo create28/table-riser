@@ -54,36 +54,38 @@ export function OptimizationTools({ allPlayers, fixtures, teams, currentBudget }
             }
         }
 
-        // Small delay to allow UI to update
-        setTimeout(() => {
-            const gameweeks = activeTab === 'freehit' ? 1 : activeTab === 'wildcard' ? 5 : 3;
-            // Budget is in millions (e.g., 100 = £100.0m)
-            // The optimizeTeam function expects budget in millions and converts internally
-            const budget = budgetValue;
+        // PERFORMANCE FIX: Use requestAnimationFrame for smoother UI updates
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                const gameweeks = activeTab === 'freehit' ? 1 : activeTab === 'wildcard' ? 5 : 3;
+                // Budget is in millions (e.g., 100 = £100.0m)
+                // The optimizeTeam function expects budget in millions and converts internally
+                const budget = budgetValue;
 
-            console.log(`Optimizing with budget: £${budgetValue}m, timeHorizon: ${timeHorizon}, risk: ${riskTolerance}`);
+                console.log(`Optimizing with budget: £${budgetValue}m, timeHorizon: ${timeHorizon}, risk: ${riskTolerance}`);
 
-            const strategy: OptimizationStrategy = {
-                timeHorizon,
-                riskTolerance
-            };
+                const strategy: OptimizationStrategy = {
+                    timeHorizon,
+                    riskTolerance
+                };
 
-            const result = optimizeTeam(allPlayers, fixtures, {
-                budget,
-                gameweeks,
-                excludePlayers: [],
-                includePlayers: [],
-                historicalData: currentHistory,
-                strategy,
-                chipType: activeTab // Pass the active tab as chipType ('freehit', 'wildcard', 'bestteam')
-            });
+                const result = optimizeTeam(allPlayers, fixtures, {
+                    budget,
+                    gameweeks,
+                    excludePlayers: [],
+                    includePlayers: [],
+                    historicalData: currentHistory,
+                    strategy,
+                    chipType: activeTab // Pass the active tab as chipType ('freehit', 'wildcard', 'bestteam')
+                });
 
-            console.log(`Result total cost: £${(result.totalCost / 10).toFixed(1)}m`);
+                console.log(`Result total cost: £${(result.totalCost / 10).toFixed(1)}m`);
 
-            setOptimizedTeam(result);
-            setLastOptimizedBudget(budgetValue);
-            setIsOptimizing(false);
-        }, 100);
+                setOptimizedTeam(result);
+                setLastOptimizedBudget(budgetValue);
+                setIsOptimizing(false);
+            }, 50);
+        });
     };
 
     const getTeamName = (teamId: number) => {

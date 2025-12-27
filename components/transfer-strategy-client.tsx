@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
@@ -117,18 +117,18 @@ export function TransferStrategyClient({
   const [volatilityPreference, setVolatilityPreference] = useState(50);
   const [budgetFlexibility, setBudgetFlexibility] = useState(0);
 
-  // Debounce Effects
+  // Debounce Effects - INCREASED to 800ms for better performance
   useEffect(() => {
     const timer = setTimeout(() => {
       setVolatilityPreference(volatilityUI);
-    }, 500); // 500ms debounce
+    }, 800); // 800ms debounce
     return () => clearTimeout(timer);
   }, [volatilityUI]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setBudgetFlexibility(budgetUI);
-    }, 500); // 500ms debounce
+    }, 800); // 800ms debounce
     return () => clearTimeout(timer);
   }, [budgetUI]);
 
@@ -329,6 +329,11 @@ export function TransferStrategyClient({
   const [transferStrategy, setTransferStrategy] = useState<TransferRecommendation[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
 
+  // CRITICAL PERFORMANCE FIX: Memoize player IDs to prevent unnecessary recalculations
+  // React's shallow comparison on arrays causes the effect to run even when data hasn't changed
+  const squadPlayerIds = useMemo(() => squadPlayers.map(p => p.id).join(','), [squadPlayers]);
+  const nextGameweekIds = useMemo(() => nextGameweeks.map(gw => gw.id).join(','), [nextGameweeks]);
+
   // Generate transfer strategy with ASYNC CHUNKED LOOP
   useEffect(() => {
     let isCancelled = false;
@@ -505,7 +510,20 @@ export function TransferStrategyClient({
     calculateStrategy();
 
     return () => { isCancelled = true; };
-  }, [squadPlayers, allPlayers, nextGameweeks, currentGameweek, volatilityPreference, playerHistories, fixtures, managerInfo, freeTransfersInput, budgetFlexibility, considerRolling, useML, mlWeights]);
+  }, [
+    // PERFORMANCE: Use memoized IDs instead of full arrays to prevent unnecessary recalculations
+    squadPlayerIds,
+    nextGameweekIds, 
+    currentGameweek, 
+    volatilityPreference, 
+    freeTransfersInput, 
+    budgetFlexibility, 
+    considerRolling, 
+    useML, 
+    mlWeights
+    // Note: allPlayers, playerHistories, fixtures, teams, managerInfo are intentionally omitted
+    // as they rarely change and including them causes excessive recalculations
+  ]);
 
   // Get difficulty badge color
   const getDifficultyColor = (difficulty: number) => {
