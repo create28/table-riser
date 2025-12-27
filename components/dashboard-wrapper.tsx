@@ -53,12 +53,6 @@ export function DashboardWrapper({ initialTeamId, children, managerInfo, entryHi
                     <p className="text-muted-foreground">{managerInfo.player_first_name} {managerInfo.player_last_name}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Link href={`/strategy?teamId=${currentTeamId}`}>
-                      <Button variant="outline" size="sm" className="gap-2">
-                        <span className="text-lg">🎯</span>
-                        Strategy
-                      </Button>
-                    </Link>
                     <Link href="/training">
                       <Button variant="outline" size="sm" className="gap-2">
                         <span className="text-lg">🧠</span>
