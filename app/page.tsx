@@ -72,11 +72,11 @@ async function getDashboardData(teamId: number) {
 
     // PERFORMANCE FIX: Batch requests with concurrency limit to prevent browser overload
     const playerHistories: { [key: number]: any } = {};
-    const playerIds = Array.from(playersToFetchHistory);
+    const allPlayerIdsToFetch = Array.from(playersToFetchHistory);
     const BATCH_SIZE = 10; // Process 10 players at a time
     
-    for (let i = 0; i < playerIds.length; i += BATCH_SIZE) {
-      const batch = playerIds.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < allPlayerIdsToFetch.length; i += BATCH_SIZE) {
+      const batch = allPlayerIdsToFetch.slice(i, i + BATCH_SIZE);
       await Promise.all(
         batch.map(async (playerId) => {
           try {
